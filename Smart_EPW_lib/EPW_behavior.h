@@ -51,6 +51,8 @@ extern void parse_EPW_motor_dir(unsigned char DIR_cmd);
 extern void PerformCommand(unsigned char group,unsigned char control_id, unsigned char value);
 
 extern void PID_Algorithm_Polling(void);
+extern void Show_data_Polling(void);
+extern void Get_Motor_Polling(void);
 extern void init_motor_CWCCW(void);
 
 

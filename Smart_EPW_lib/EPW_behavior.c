@@ -6,20 +6,155 @@
 #include "ultrasound.h"
 #include "timers.h"
 #include "uart.h"
-#include "clib.h"
+//#include "clib.h"
 #include "EPW_command.h"
 #include "PID.h"
-
+#include "math.h"
 
 #define CAR_POLLING_PERIOD  20//unit : ms
 #define PID_POLLING_PERIOD  20//unit : ms
-
+#define SHOW_DATA_PERIOD  500
+#define GET_MOTOR_PERIOD   20
 
 #define MOTOR_CW 0
 #define MOTOR_CCW 1
 
+#define PI 3.14
+#define ts 0.001
+#define neuralNumber  6
+#define centerNumber  3
+#define RF 1
 
+int encoder_left_counter_1;
+int encoder_right_counter_1;
 
+float speed_max = 20.0;
+float eta = 0.15;
+float kp = 2;
+float ki = 4;
+float kd = 1;
+
+float kp_1 = 2;
+float ki_1 = 4;
+float kd_1 = 1;
+
+float yout = 0;
+float yout_1 = 0;
+float yu = 0;
+float dyu = 0;
+
+float rf_out = 0;
+float rf_out_1 = 0;
+float rf_out_2 = 0;
+
+float h[neuralNumber];
+float ynout = 0;
+
+float du = 0;
+float u = 0;
+float u_1 = 0;
+float u_2 = 0;
+
+float e_1 = 0, e_2 = 0;
+float erbf = 3;
+float e = 0;
+
+float x[centerNumber];
+
+float c[centerNumber][neuralNumber];
+float dc[centerNumber][neuralNumber];
+
+float b[neuralNumber];
+float db[neuralNumber];
+
+float w[neuralNumber];
+float dw[neuralNumber];
+
+float c_1[centerNumber][neuralNumber];
+float b_1[neuralNumber];
+float w_1[neuralNumber];
+
+float xc[3];
+
+float norm_c_2[neuralNumber];  // (norm_c)^2
+
+// input command
+float rin = 0.0f;
+
+int k = 0;
+
+float yout_cal(float u_1, float yout_1);
+float sigmoid(float x);
+float referenceModel(float rin, float rf_out_1);
+float referenceModel2(float rin, float rf_out_1, float rf_out_2);
+
+void array_1d_Init(int size, float value, float *array){
+	int i;
+	float tmp = value / (float)size;
+    for (i = 0; i < size; ++i){ 
+    	array[i] = value * tmp;
+    	tmp += tmp;
+    }
+}
+
+void array_1d_Init_2(int size, float value, float *array){
+	int i;
+    for (i = 0; i < size; ++i) array[i] = value;
+}
+
+// array[x][y]  array[i][j]
+void array_2d_Init(int size_x, int size_y, float value, float array[][size_y]){
+    int i,j;
+    for ( i = 0; i < size_x; ++i)
+        for ( j = 0; j < size_y; ++j)
+            array[i][j] = (float)value;
+}
+
+// array2 = array1
+void array_1d_Copy(int size, float *array1, float *array2){
+    int i;
+    for ( i = 0; i < size; ++i)
+        array2[i] = array1[i];
+}
+
+// array2 = array1
+void array_2d_Copy(int size_x, int size_y, float array1[][size_y], float array2[][size_y]){
+    int i, j;
+    for ( i = 0; i < size_x; ++i)
+        for ( j = 0; j < size_y; ++j)
+            array2[i][j] = array1[i][j];
+}
+
+/*
+ *  Sigmoid function refer to : http://www.ece.utep.edu/research/webfuzzy/docs/kk-thesis/kk-thesis-html/node72.html
+ */
+float sigmoid(float x)
+{
+     float exp_value;
+     float return_value;
+
+     /*** Exponential calculation ***/
+     exp_value = exp((double) -x);
+
+     /*** Final sigmoid value ***/
+     return_value = 1 / (1 + exp_value);
+
+     return return_value;
+}
+
+float yout_cal(float u_1, float yout_1){
+    float output = (-0.2 * yout_1 + 0.5 * u_1)/(1.5  + pow(yout_1, 2)); // model 1
+    //float output = ((95.7 * u_1 + 100.0 * yout_1)/195.7);
+    return output;
+}
+
+float referenceModel(float rin, float rf_out_1){
+    return ((5.7 * rin + 100.0 * rf_out_1)/105.7);
+}
+
+float referenceModel2(float rin, float rf_out_1, float rf_out_2){
+    return ((25 * rin - rf_out_2 - 7 * rf_out_1)/25);
+}
 
 typedef enum{
 		CAR_STATE_IDLE,
@@ -33,6 +168,7 @@ typedef enum{
 static car_state_t car_state;
 
 
+
 /*create the pid struct for use*/
 pid_struct PID_Motor_L;
 pid_struct PID_Motor_R;
@@ -41,16 +177,21 @@ pid_struct PID_Motor_R;
 
 /*encoder_left  variable.  setting*/
 float rpm_left_motor = 0.0f;
+float rpm_left_motor_tmp = 0.0f;
 int encoder_left_counter;
 /*encoder_right  variable  setting*/
 float rpm_right_motor = 0.0f;
+float rpm_right_motor_tmp = 0.0f;
 int encoder_right_counter;
+
+int count_l = 0;
+int count_r = 0;
 
 static float set_rpm=300.0f;
 
 /*pwm regulate of two motor */
-static int pwm_value_left=127; /*default pwm value*/
-static int pwm_value_right=127;
+static int pwm_value_left=120; /*default pwm value*/
+static int pwm_value_right=120;
 static int motor_speed_value=0; /*global speed value, range is 0~10.
 static char flag;
 
@@ -60,7 +201,17 @@ static float Kp,Ki,Kd;
 /*Timer handle declare*/
 xTimerHandle carTimers;
 xTimerHandle PID_Timers;
+xTimerHandle Show_data_Timers;
+xTimerHandle Get_Motor_Timers;
 
+// Set the moving speed to 6 stage, smoothing the speed acceleration
+int forward_count = 0;
+int forward_stage = 0;
+int forward_pwm_value[10] = {175, 144, 160, 170,175, 170, 160, 144, 130, 128};
+
+int backward_count = 0;
+int backward_stage = 0;
+int backward_pwm_value[9] = {108, 114, 108, 108, 114, 117};
 
 /*============================================================================*/
 /*============================================================================*
@@ -190,7 +341,7 @@ void init_External_Interrupt(void){
 		SYSCFG_EXTILineConfig(EXTI_PortSourceGPIOA,EXTI_PinSource0);
 		EXTI_InitStruct.EXTI_Line = EXTI_Line0;
 		EXTI_InitStruct.EXTI_Mode = EXTI_Mode_Interrupt;
-		EXTI_InitStruct.EXTI_Trigger = EXTI_Trigger_Rising;
+		EXTI_InitStruct.EXTI_Trigger = EXTI_Trigger_Rising_Falling;
 		EXTI_InitStruct.EXTI_LineCmd = ENABLE;
 		EXTI_Init(&EXTI_InitStruct);
 		EXTI_ClearITPendingBit(EXTI_Line0);
@@ -206,7 +357,7 @@ void init_External_Interrupt(void){
 		SYSCFG_EXTILineConfig(EXTI_PortSourceGPIOA,EXTI_PinSource1);
 		EXTI_InitStruct.EXTI_Line = EXTI_Line1;
 		EXTI_InitStruct.EXTI_Mode = EXTI_Mode_Interrupt;
-		EXTI_InitStruct.EXTI_Trigger = EXTI_Trigger_Rising;
+		EXTI_InitStruct.EXTI_Trigger = EXTI_Trigger_Rising_Falling;
 		EXTI_InitStruct.EXTI_LineCmd = ENABLE;
 		EXTI_Init(&EXTI_InitStruct);
 		EXTI_ClearITPendingBit(EXTI_Line1);
@@ -224,18 +375,32 @@ void init_car(){
         init_motor_CWCCW();
         init_encoder();
 		init_External_Interrupt();
+
+		// array initialization
+	    array_1d_Init_2(neuralNumber, 0.0, x);
+	    array_2d_Init(centerNumber, neuralNumber, speed_max/2, c);
+	    array_1d_Init_2(neuralNumber, speed_max, b);
+	    array_1d_Init(neuralNumber, 0.5, w);
+
+	    // record the temporal array value    array_1d_Copy(neuralNumber, b, b_1);
+	    array_1d_Copy(neuralNumber, w, w_1);
+	    array_1d_Copy(neuralNumber, b, b_1);
+	    array_2d_Copy(centerNumber, neuralNumber, c, c_1);
         
 
-		carTimers=xTimerCreate("Car_State_Polling",	 ( CAR_POLLING_PERIOD), pdTRUE, ( void * ) 1,  Car_State_Polling );
+		carTimers = xTimerCreate("Car_State_Polling",	 ( CAR_POLLING_PERIOD), pdTRUE, ( void * ) 1,  Car_State_Polling );
 		xTimerStart( carTimers, 0 );
 
+		Show_data_Timers = xTimerCreate("Show_data_Polling",( SHOW_DATA_PERIOD), pdTRUE, ( void * ) 1,  Show_data_Polling );
+		xTimerStart( Show_data_Timers, 0 );
 
-		PID_Timers=xTimerCreate("PID_Algorithm_Polling",( PID_POLLING_PERIOD), pdTRUE, ( void * ) 1,  PID_Algorithm_Polling);
-		xTimerStart( PID_Timers, 0 );
-
+//		Get_Motor_Timers = xTimerCreate("Get_Motor_Polling", (GET_MOTOR_PERIOD), pdTRUE, ( void * ) 2,  Get_Motor_Polling );
+//		xTimerStart( Get_Motor_Timers, 0 );
+	
         /*Initialization the right motor of pid paremeter.*/
-        Kp=3.0f; Ki=2.0f; Kd=0.0f;
+        Kp=2.0f; Ki=0.1f; Kd=4.0f;
         InitPID(&PID_Motor_R , Kp ,Ki,Kd);
+        InitPID(&PID_Motor_L , Kp ,Ki,Kd);
 }
 
 
@@ -257,20 +422,17 @@ void init_car(){
 #define CAR_MOVING_PERIOD 250 
 #define CAR_REST_PERIOD  5
 void Car_State_Polling(){
+		getMotorData();
 		static int count=0;
         unsigned int distance[4];
-        //distance[0]=Get_CH1Distance();
-        //distance[1]=Get_CH2Distance();
-        //distance[2]=Get_CH3Distance();
-        //distance[3]=Get_CH4Distance();
         
 		if(car_state==CAR_STATE_IDLE){
+			proc_cmd("stop" , 125 , 125);
 				count=0;
 		}
 		else if(car_state==CAR_STATE_REST){
-				proc_cmd("stop" , 0 , 0);
+				proc_cmd("stop" , 125 , 125);
 
-                
 				count++;
 				if(count>=CAR_REST_PERIOD){
 						count=0;
@@ -278,43 +440,37 @@ void Car_State_Polling(){
 				}
 		}
 		else if(car_state==CAR_STATE_MOVE_FORWARD){
-
-#if 0       
-                if(distance[0]==0 || distance[1]==0){
-                    car_state=CAR_STATE_IDLE;
-                    return;
-                }
-                state|=((distance[0]>THRESHOLD_DISTANCE)?0x01:0x00);
-                state|=((distance[1]>THRESHOLD_DISTANCE)?0x02:0x00);
-                switch(state){
-                    case 0x00:
-                        //deadend
-                        
-                        break;
-                    case 0x01:
-                        //need to turn left
-                        //proc_cmd("left" , pwm_value_left , pwm_value_right);
-
-                        /*send warning message*/
-                        //printf("Left %d %d" , distance[0] , distance[1]);
-                        break;
-                    case 0x02:
-                        //need to turn right
-                        //proc_cmd("right" , pwm_value_left , pwm_value_right);
-
-                        /*send warning message*/
-                        //printf("Right %d %d" , distance[0] , distance[1]);
-                        break;
-                    case 0x03:
-                        //nothing ahead
-                        break;
-                }
-#endif       
                 count++;
-				if(count>=CAR_MOVING_PERIOD){
+
+				//int pwm_value_right = 150;
+				//int pwm_value_left = (int)PID_Inc_Calc(&PID_Motor_L , rpm_right_motor, rpm_left_motor);
+                                
+                if (count_r >= 30000)  //2000 == 4 cycle
+                {
+                	count_l = 0;
+                	count_r = 0;
+					car_state=CAR_STATE_REST;
+					xc[0] = 0;//e - e_1;
+	        		xc[1] = 0;
+	        		xc[2] = 0;//e - (2 * e_1) + e_2;
+	        		e = 0;
+	        		e_1 = 0;
+	        		e_2 = 0;
+	        		erbf = 3;
+	        		ynout = 0;
+	        		u_1 = 0;
+	        		u = 0;
+	        		du = 0;
+	        		encoder_right_counter_1 = 0;
+	        		encoder_left_counter_1 = 0;
+					InitPID(&PID_Motor_R, Kp, Ki, Kd);
+					InitPID(&PID_Motor_L, Kp, Ki, Kd);
+//					proc_cmd("stop" , 125 , 125);
+                }
+				/*if(count>=CAR_MOVING_PERIOD){
 						count=0;
 						car_state=CAR_STATE_REST;
-				}
+				}*/
 		}	
 		else if(car_state==CAR_STATE_MOVE_BACK){
                 
@@ -337,7 +493,7 @@ void Car_State_Polling(){
 						count=0;
 						car_state=CAR_STATE_REST;
     		    }
-		}    
+		}
 }
 
 /*============================================================================*/
@@ -355,17 +511,18 @@ void parse_EPW_motor_dir(unsigned char DIR_cmd)
 				car_state = CAR_STATE_MOVE_FORWARD;
 				encoder_left_counter=0;
 				encoder_right_counter=0;
-				pwm_value_left = motor_speed_convert_to_pwm(MOTOR_CW, motor_speed_value); 
-				pwm_value_right=pwm_value_left;
-				proc_cmd("forward" , pwm_value_left , pwm_value_right);
+				//pwm_value_left = motor_speed_convert_to_pwm(MOTOR_CW, motor_speed_value); 
+				//pwm_value_right=pwm_value_left;
+				//proc_cmd("forward" , 150, 150);
+				//proc_cmd("forward" , pwm_value_left , pwm_value_right);
 		}
 		else if(DIR_cmd == 's'){
 				car_state = CAR_STATE_IDLE;
 				encoder_left_counter=0;
 				encoder_right_counter=0;
 				/*even stop function is  always zero , but for security, I also set speedvalue to zero.*/
-				pwm_value_left = 127;
-				pwm_value_right = 127;
+				pwm_value_left = 125;
+				pwm_value_right = 125;
 				proc_cmd("stop" , pwm_value_left , pwm_value_right);
 
 		}
@@ -465,64 +622,245 @@ void PerformCommand(unsigned char group,unsigned char control_id, unsigned char 
    }
 }
 
+float pow2(float number, int times){
+	int i = 0;
+	float tmp = 1.0f;
+	for (i = 0; i < times; ++i)
+	{
+		tmp = number * tmp;
+	}
+	return tmp;
+}
 
+float abs2(float number){
+	float result = number;
+	if (result < 0)
+	{
+		result = (-1) * result;
+	}
+	return result;
+}
 
-/*============================================================================*/
-/*============================================================================*
- ** function : PID_Algorithm_Polling
- ** brief : loop read the encoder signal  and caclulator the RPM , the cycle time is 20msec
- ** param : None
- ** retval : None
- **============================================================================*/
-/*============================================================================*/
-#define OUTPUT_INFO_PERIOD 25 /*unit : PID_POLLING_PERIOD ms*/
-void PID_Algorithm_Polling(void)
+float exponential(float ld){
+	float result = 1.0;
+	float term = ld;
+	int diaminator = 2;
+	int count = 0;
+	int test = 0;
+
+	while(count < 20){
+		result = result + term;
+		term = term * ld;
+		term = term / (float)diaminator;
+		(int)diaminator ++;
+		count ++;
+		test = (int)(abs2(term)*1000);
+		if(test < 10){
+			break;
+		}
+	}
+
+	return result;
+}
+
+void neural_task(void *p)
 {
-
+	while(1){
 		detachInterrupt(EXTI_Line0); /*close external interrupt 0*/ 
 		detachInterrupt(EXTI_Line1); /*close external interrupt 1*/ 
-        float temp ;
-        /*get the two motor parameter such as RPM, Rotations..*/
-        getMotorData();
 
-        
-		/*restart motor calibration and re-count encoder count*/
-		if(car_state == CAR_STATE_MOVE_FORWARD){
-                /*calculate Position PID of two motor*/    
-                pwm_value_right = (int)PID_Pos_Calc(&PID_Motor_R , rpm_left_motor , rpm_right_motor);
-				proc_cmd("forward" , pwm_value_left , pwm_value_right);
-		}
-		else if(car_state == CAR_STATE_MOVE_BACK) {
-                /*calculate Position PID of two motor*/    
-                pwm_value_right = (int)PID_Pos_Calc(&PID_Motor_R , rpm_left_motor , rpm_right_motor);
-				proc_cmd("backward" , pwm_value_left , pwm_value_right);
-		}
+		getMotorData();
+        erbf = (float)encoder_right_counter_1 - ynout;
 
-        encoder_left_counter = 0;   
-        encoder_right_counter = 0; 
+	    if(car_state == CAR_STATE_MOVE_FORWARD){
+	    	rin = speed_max;
+	    }else{
+	    	rin = 0.0;
+	    }
 
-        
+	        int i = 0, j = 0;
 
-		/*restart enable the external interrupt*/
-		attachInterrupt(EXTI_Line0); 
+	        // 2. RBFNN Output
+	        ynout = 0;
+	        for ( i = 0; i < neuralNumber; ++i)
+	        {
+	        	norm_c_2[i] = pow2((x[0] - c[0][i]), 2) + pow2((x[1] - c[1][i]), 2) + pow2((x[2] - c[2][i]), 2);
+	            	            
+	            float tmp = (((-0.5) * norm_c_2[i]));
+	            tmp = tmp/ pow2(b[i], 2);
+	            h[i] = exponential(tmp);
+	            ynout = ynout + h[i]*w[i];
+	        }
+
+	        // 3. Update w of RBFNN
+	        for ( i = 0; i < neuralNumber; ++i)
+	        {
+	        	float tmp = erbf * h[i];
+	            dw[i] = eta * tmp;
+	            w_1[i] = w[i];
+	            w[i] = w_1[i] + dw[i];
+	        }
+
+	        // 4. Update bj
+	        for ( i = 0; i < neuralNumber; ++i)
+	        {
+	        	float tmp = eta * erbf;
+	        	tmp = tmp * w[i];
+	        	tmp = tmp * h[i];
+	        	tmp = tmp * norm_c_2[i];
+	        	tmp = tmp / pow2(b[i], 3);
+	            db[i] = tmp;
+	            b_1[i] = b[i];
+	            b[i] = b_1[i] + db[i];
+	        }
+
+	        // 5. Update Cj
+	        for ( i = 0; i < neuralNumber; ++i)
+	        {
+	            for ( j = 0; j < 3; ++j)
+	            {
+	            	float tmp = eta * erbf;
+	            	tmp = tmp * w[i];
+	            	tmp = tmp * h[i];
+	            	tmp = tmp * (x[j] - c[j][i]);
+	            	tmp = tmp /  pow2(b[i], 2);
+	            	dc[j][i] = tmp;
+	                c_1[j][i] = c[j][i];
+	                c[j][i] = c_1[j][i] + dc[j][i];	                
+	            }
+	        }
+
+	        // 6. Calculate Jacobian
+	        yu = 0;
+	        for ( i = 0; i < neuralNumber; ++i)
+	        {
+	        	float tmp = w[i] * h[i];
+	        	float tmp2 = (-1) * x[0];
+	        	tmp = tmp *  (tmp2 + c[0][i]) ;
+	        	tmp = tmp / pow2(b[i], 2);
+	            yu = yu + tmp;
+	            //yu = yu + w[i] * h[i] * (-1 * x[0] + c[0][i]) / pow2(b[i], 2);
+	        }
+	        dyu = yu;
+
+	        // 7. Update error
+#if RF == 1 
+	        rf_out = referenceModel2(rin, rf_out_1, rf_out_2);
+	        e = rf_out - (float)encoder_right_counter_1;
+	        rf_out_2 = rf_out_1;
+	        rf_out_1 = rf_out;
+#else
+	        e = rin - (float)encoder_right_counter_1;
+#endif
+	        // 8. Incremental PID
+	        xc[0] = e - e_1;
+	        xc[1] = e;
+	        xc[2] = e - (2 * e_1) + e_2; 
+
+	        int tmp_erbf = (int)(abs2(erbf)*100);
+	        if (tmp_erbf < 100){
+		        float kp_add = eta * e;
+		        kp_add = kp_add * dyu;
+		        kp_add = kp_add * xc[0];
+		        
+		        float ki_add = eta * e;
+		        ki_add = ki_add * dyu;
+		        ki_add = ki_add * xc[1];
+		        
+		        float kd_add = eta * e;
+		        kd_add = kd_add * dyu;
+		        kd_add = kd_add * xc[2];
+		        
+		        // 10. update kp(k-1) ki(k-1) kd(k-1)
+		        kp_1 = kp;
+		        ki_1 = ki;
+		        kd_1 = kd;
+
+		        // 9. Update the parameter of PID controller    
+		        kp = kp_1 + kp_add;
+		        ki = ki_1 + ki_add;
+		        kd = kd_1 + kd_add;
+		        if (kp < 0.1)
+		        {
+		        	kp = 0.1;
+		        }
+		        if (ki < 0.1)
+		        {
+		        	ki = 0.1;
+		        }
+		        if (kd < 0.1)
+		        {
+		        	kd = 0.1;
+		        }		       
+		    }
+
+	        // 11. Calculate the output of PID controller
+	        du = kp * xc[0] + ki * xc[1] + kd * xc[2];
+	        u = u_1 + du;
+	        if (u < 0)
+	        {
+	        	u = 0;
+	        }else if(u > 100) {
+	        	u = 100;
+	        }else{}
+
+
+	        // 12. update yout(k-1) u(k-1)
+	        yout_1 = x[1];
+	        u_2 = u_1;
+	        u_1 = u;
+
+	        // 13. update e(k-1) e(k-2)
+	        e_2 = e_1;
+	        e_1 = e;
+
+	        // 14. update input of RBFNN
+	        x[0] = du;
+	        x[1] = (float)encoder_right_counter_1;
+	        x[2] = yout_1;
+ 
+	        proc_cmd("forward", 125, (125 + (int)u_1));
+	    attachInterrupt(EXTI_Line0); 
 		attachInterrupt(EXTI_Line1);
+	    vTaskDelay(50);
+	}
+}
+void Show_data_Polling(void)
+{
+	//int tmp_erbf = (erbf*100); 
+	//tmp_erbf = tmp_erbf / encoder_right_counter_1;
+	//tmp_erbf = tmp_erbf*100;
+	//printf("fff\n");
+//	printf("erbf = %d ", (int)erbf);
+//	printf("yn = %d ", (int)ynout);
+	printf("%d %d %d\n", (int) encoder_right_counter_1, (int)ynout, (int)erbf);
+    printf("p=%d i=%d d=%d \n", (int)(kp*100), (int)(ki*100), (int)(kd*100));
+//    printf("c * 100 = %d \n", (int)(c[0][0]*100));
+ //   printf("db * 100 = %d \n", (int)(db[0]*100));
+   // printf("dw * 100 = %d \n", (int)(dw[0]*100));
+ //   printf("du * 100 = %d \n", (int)(du*100));	        
+    //printf("100 * u_1 = %d\n", (int)(u_1 * 100));
+//	printf("erbf=%d\n", (int)(erbf*100));
+	      
+	//printf(" left encoder : %d \n", count_l);
+	//printf(" right encoder : %d \n", count_r);
+}
 
+void Get_Motor_Polling (void)
+{
+	getMotorData();
 }
 
 void getMotorData(void)
 {
-    
-    /*for L298N test is used by 600 pulse/rev of the encoder.*/
-#ifdef L298N_MODE 
-    rpm_left_motor=(float)encoder_left_counter * 60.0f /600.0f / 0.02f;
-    rpm_right_motor=(float)encoder_right_counter *  60.0f  /600.0f / 0.02f;    
-#else
     /*for SmartEPW is used by 500 pulse/rev */
-    rpm_left_motor=(float)encoder_left_counter * 60.0f /500.0f / 0.02f;
-    rpm_right_motor=(float)encoder_right_counter *  60.0f  /500.0f / 0.02f;          
-    //get the speed of the two motors in deg/sec
-    /***do someting***/ 
-#endif
+    //rpm_left_motor=(float)encoder_left_counter;// * 3.0f;//60.0f / 1000.0f / 0.02f;
+    //rpm_right_motor=(float)encoder_right_counter;// * 3.0f;// 60.0f  / 1000.0f / 0.02f;
+    encoder_right_counter_1 = encoder_right_counter;
+    encoder_left_counter_1 = encoder_left_counter;
+
+    encoder_left_counter = 0;
+    encoder_right_counter = 0;          
 }
 
 void EXTI0_IRQHandler(){
@@ -530,6 +868,7 @@ void EXTI0_IRQHandler(){
 		if(EXTI_GetITStatus(EXTI_Line0) != RESET)
 		{
 				encoder_left_counter++ ;
+				count_l ++;
 				EXTI_ClearITPendingBit(EXTI_Line0);
 		}
 }
@@ -538,6 +877,7 @@ void EXTI1_IRQHandler(){
 		if(EXTI_GetITStatus(EXTI_Line1) != RESET)
 		{
 				encoder_right_counter++ ;
+				count_r ++;
 				EXTI_ClearITPendingBit(EXTI_Line1);
 		}
 }
@@ -554,14 +894,3 @@ void attachInterrupt(uint32_t EXTI_LineX){
 		EXTI_InitStruct.EXTI_Line = EXTI_LineX;
 		EXTI_InitStruct.EXTI_LineCmd = ENABLE;
 }
-
-
-
-
-
-
-
-
-
-
-

@@ -229,9 +229,9 @@ int main(void) {
 
 		/*create the task. */         
         printf("Task creating...........\r\n");
-		ret = xTaskCreate(tesing_task, "test task", 1024 /*configMINIMAL_STACK_SIZE*/, NULL, 1, NULL);
-        ret &= xTaskCreate(receive_task, "receive command task", 1024 /*configMINIMAL_STACK_SIZE*/, NULL, 1, NULL);
-		ret &= xTaskCreate(send_out_task, "send out information task", 1024 /*configMINIMAL_STACK_SIZE*/, NULL, 1, NULL);
+		ret = xTaskCreate(neural_task, "test task", 8192 /*configMINIMAL_STACK_SIZE*/, NULL, 1, NULL);
+        ret &= xTaskCreate(receive_task, "receive command task", 1024 /*configMINIMAL_STACK_SIZE*/, NULL, 2, NULL);
+		//ret &= xTaskCreate(send_out_task, "send out information task", 1024 /*configMINIMAL_STACK_SIZE*/, NULL, 1, NULL);
 		if (ret == pdTRUE) {
 				printf("All tasks are created.\r\n");
                 printf("System Started!\r\n");
