@@ -30,6 +30,8 @@ int encoder_left_counter_1;
 int encoder_right_counter_1;
 
 float move_distance = 10.0;
+
+typedef struct _neural_State{
 float eta = 0.15;
 float kp = 3;
 float ki = 25;
@@ -78,14 +80,11 @@ float w_1[neuralNumber];
 float xc[3];
 
 float norm_c_2[neuralNumber];  // (norm_c)^2
+} neural_state;
 
 // input command
 float rin = 0.0f;
 
-int k = 0;
-
-float yout_cal(float u_1, float yout_1);
-float sigmoid(float x);
 float referenceModel(float rin, float rf_out_1);
 float referenceModel2(float rin, float rf_out_1, float rf_out_2);
 
@@ -125,33 +124,6 @@ void array_2d_Copy(int size_x, int size_y, float array1[][size_y], float array2[
             array2[i][j] = array1[i][j];
 }
 
-/*
- *  Sigmoid function refer to : http://www.ece.utep.edu/research/webfuzzy/docs/kk-thesis/kk-thesis-html/node72.html
- */
-float sigmoid(float x)
-{
-     float exp_value;
-     float return_value;
-
-     /*** Exponential calculation ***/
-     exp_value = exp((double) -x);
-
-     /*** Final sigmoid value ***/
-     return_value = 1 / (1 + exp_value);
-
-     return return_value;
-}
-
-float yout_cal(float u_1, float yout_1){
-    float output = (-0.2 * yout_1 + 0.5 * u_1)/(1.5  + pow(yout_1, 2)); // model 1
-    //float output = ((95.7 * u_1 + 100.0 * yout_1)/195.7);
-    return output;
-}
-
-float referenceModel(float rin, float rf_out_1){
-    return ((5.7 * rin + 100.0 * rf_out_1)/105.7);
-}
-
 float referenceModel2(float rin, float rf_out_1, float rf_out_2){
     return ((25 * rin - rf_out_2 - 7 * rf_out_1)/25);
 }
@@ -166,33 +138,18 @@ typedef enum{
 }car_state_t;
 
 static car_state_t car_state;
+static neural_state_t n_r;
 
-
-
-/*create the pid struct for use*/
-pid_struct PID_Motor_L;
-pid_struct PID_Motor_R;
-
-
-
-/*encoder_left  variable.  setting*/
-float rpm_left_motor = 0.0f;
-float rpm_left_motor_tmp = 0.0f;
-int encoder_left_counter;
-/*encoder_right  variable  setting*/
-float rpm_right_motor = 0.0f;
-float rpm_right_motor_tmp = 0.0f;
 int encoder_right_counter;
+int encoder_left_counter;
 
 int count_l = 0;
 int count_r = 0;
 
-static float set_rpm=300.0f;
-
 /*pwm regulate of two motor */
-static int pwm_value_left=120; /*default pwm value*/
-static int pwm_value_right=120;
-static int motor_speed_value=0; /*global speed value, range is 0~10.
+static int pwm_value_left = 125; /*default pwm value*/
+static int pwm_value_right = 125;
+static int motor_speed_value = 1; /*global speed value, range is 0~10.
 static char flag;
 
 /*pid alg premeter.*/
@@ -203,15 +160,6 @@ xTimerHandle carTimers;
 xTimerHandle PID_Timers;
 xTimerHandle Show_data_Timers;
 xTimerHandle Get_Motor_Timers;
-
-// Set the moving speed to 6 stage, smoothing the speed acceleration
-int forward_count = 0;
-int forward_stage = 0;
-int forward_pwm_value[10] = {175, 144, 160, 170,175, 170, 160, 144, 130, 128};
-
-int backward_count = 0;
-int backward_stage = 0;
-int backward_pwm_value[9] = {108, 114, 108, 108, 114, 117};
 
 /*============================================================================*/
 /*============================================================================*
@@ -511,10 +459,6 @@ void parse_EPW_motor_dir(unsigned char DIR_cmd)
 				car_state = CAR_STATE_MOVE_FORWARD;
 				encoder_left_counter=0;
 				encoder_right_counter=0;
-				//pwm_value_left = motor_speed_convert_to_pwm(MOTOR_CW, motor_speed_value); 
-				//pwm_value_right=pwm_value_left;
-				//proc_cmd("forward" , 150, 150);
-				//proc_cmd("forward" , pwm_value_left , pwm_value_right);
 		}
 		else if(DIR_cmd == 's'){
 				car_state = CAR_STATE_IDLE;
