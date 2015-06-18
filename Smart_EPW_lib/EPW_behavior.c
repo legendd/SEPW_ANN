@@ -341,14 +341,6 @@ void init_car(){
 
 		Show_data_Timers = xTimerCreate("Show_data_Polling",( SHOW_DATA_PERIOD), pdTRUE, ( void * ) 1,  Show_data_Polling );
 		xTimerStart( Show_data_Timers, 0 );
-
-//		Get_Motor_Timers = xTimerCreate("Get_Motor_Polling", (GET_MOTOR_PERIOD), pdTRUE, ( void * ) 2,  Get_Motor_Polling );
-//		xTimerStart( Get_Motor_Timers, 0 );
-	
-        /*Initialization the right motor of pid paremeter.*/
-        Kp=2.0f; Ki=0.1f; Kd=4.0f;
-        InitPID(&PID_Motor_R , Kp ,Ki,Kd);
-        InitPID(&PID_Motor_L , Kp ,Ki,Kd);
 }
 
 
