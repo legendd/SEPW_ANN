@@ -29,11 +29,11 @@
 int encoder_left_counter_1;
 int encoder_right_counter_1;
 
-float speed_max = 10.0;
+float move_distance = 10.0;
 float eta = 0.15;
-float kp = 1;
-float ki = 3;
-float kd = 1;
+float kp = 3;
+float ki = 25;
+float kd = 3;
 
 float kp_1 = 1;
 float ki_1 = 3;
@@ -378,8 +378,8 @@ void init_car(){
 
 		// array initialization
 	    array_1d_Init_2(neuralNumber, 0.0, x);
-	    array_2d_Init(centerNumber, neuralNumber, speed_max/2, c);
-	    array_1d_Init_2(neuralNumber, speed_max*10, b);
+	    array_2d_Init(centerNumber, neuralNumber, move_distance/2, c);
+	    array_1d_Init_2(neuralNumber, move_distance*10, b);
 	    array_1d_Init(neuralNumber, 0.5, w);
 
 	    // record the temporal array value    array_1d_Copy(neuralNumber, b, b_1);
@@ -443,7 +443,7 @@ void Car_State_Polling(){
                 count++;
 
 				//int pwm_value_right = 150;
-				//int pwm_value_left = (int)PID_Inc_Calc(&PID_Motor_L , rpm_right_motor, rpm_left_motor);
+				//int 																																																																																																																																																																																																																																																																																																								``	pwm_value_left = (int)PID_Inc_Calc(&PID_Motor_L , rpm_right_motor, rpm_left_motor);
                                 
                 if (count_r >= MOVE_PERIOD)  //2000 == 4 cycle
                 {
@@ -671,24 +671,8 @@ void neural_task(void *p)
 		detachInterrupt(EXTI_Line0); /*close external interrupt 0*/ 
 		detachInterrupt(EXTI_Line1); /*close external interrupt 1*/ 
 
-		//getMotorData();
-/*        getMotorData();
-        erbf = (float)encoder_right_counter_1 - ynout;
-        erbf_record[4] = erbf_record[3];
-		erbf_record[3] = erbf_record[2];
-		erbf_record[2] = erbf_record[1];
-		erbf_record[1] = erbf_record[0];
-		erbf_record[0] = abs2(erbf);
-		erbf_avg = (erbf_record[0] + erbf_record[1] + erbf_record[2] + erbf_record[3] + erbf_record[4])/5.0;
-*/
-//        printf("e %d %d %d \n", (int) encoder_right_counter_1, (int)ynout, (int)erbf);
-//        printf("pid %d %d %d \n", (int)(kp*100), (int)(ki*100), (int)(kd*100));
-//        printf("c %d %d %d\n", (int)(c[0][0]*100), (int)(c[0][1]*100), (int)(c[0][2]*100));
-//        printf("x %d %d %d\n", (int)(x[0]), (int)(x[1]), (int)(x[2]));
-//        printf("b %d %d %d\n", (int)(b[0]), (int)(b[1]), (int)(b[2]));
-
 	    if(car_state == CAR_STATE_MOVE_FORWARD){
-	    	rin = speed_max;
+	    	rin = move_distance;
 	    }else{
 	    	rin = 0.0;
 	    }
@@ -706,7 +690,9 @@ void neural_task(void *p)
             h[i] = exponential(tmp);
             ynout = ynout + h[i]*w[i];
         }
-                getMotorData();
+        
+        // 2.5 Get the motor speed of last clock cycle, and calculate the error of rbf
+        getMotorData();
         erbf = (float)encoder_right_counter_1 - ynout;
         erbf_record[4] = erbf_record[3];
 		erbf_record[3] = erbf_record[2];
