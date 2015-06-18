@@ -6,13 +6,11 @@
 #include "ultrasound.h"
 #include "timers.h"
 #include "uart.h"
-//#include "clib.h"
+#include "clib.h"
 #include "EPW_command.h"
 #include "PID.h"
-#include "math.h"
 
 #define CAR_POLLING_PERIOD  20//unit : ms
-#define PID_POLLING_PERIOD  20//unit : ms
 #define SHOW_DATA_PERIOD  2000
 #define GET_MOTOR_PERIOD   50
 #define MOVE_PERIOD 3000
@@ -684,7 +682,6 @@ void neural_task(void *p)
         	tmp = tmp *  (tmp2 + c[0][i]) ;
         	tmp = tmp / pow2(b[i], 2);
             yu = yu + tmp;
-            //yu = yu + w[i] * h[i] * (-1 * x[0] + c[0][i]) / pow2(b[i], 2);
         }
         dyu = yu;
 
