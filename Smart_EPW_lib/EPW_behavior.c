@@ -10,75 +10,13 @@
 #include "EPW_command.h"
 #include "PID.h"
 
-#define CAR_POLLING_PERIOD  20//unit : ms
-#define SHOW_DATA_PERIOD  2000
-#define GET_MOTOR_PERIOD   50
-#define MOVE_PERIOD 3000
-
-#define MOTOR_CW 0
-#define MOTOR_CCW 1
-
-#define PI 3.14
-#define ts 0.001
-#define neuralNumber  6
-#define centerNumber  3
-#define RF 1
-
 int encoder_left_counter_1;
 int encoder_right_counter_1;
 
 float move_distance = 10.0;
 
-typedef struct _neural_State{
-float eta = 0.15;
-float kp = 3;
-float ki = 25;
-float kd = 3;
-
-float kp_1 = 1;
-float ki_1 = 3;
-float kd_1 = 1;
-
-float yout = 0;
-float yout_1 = 0;
-float yu = 0;
-float dyu = 0;
-
-float rf_out = 0;
-float rf_out_1 = 0;
-float rf_out_2 = 0;
-
-float h[neuralNumber];
-float ynout = 0;
-
-float du = 0;
-float u = 0;
-float u_1 = 0;
-float u_2 = 0;
-
-float e_1 = 0, e_2 = 0;
-float erbf = 0;
-float e = 0;
-
-float x[centerNumber];
-
-float c[centerNumber][neuralNumber];
-float dc[centerNumber][neuralNumber];
-
-float b[neuralNumber];
-float db[neuralNumber];
-
-float w[neuralNumber];
-float dw[neuralNumber];
-
-float c_1[centerNumber][neuralNumber];
-float b_1[neuralNumber];
-float w_1[neuralNumber];
-
-float xc[3];
-
-float norm_c_2[neuralNumber];  // (norm_c)^2
-} neural_state;
+neural_state_t n_r;
+neural_state_t n_l;
 
 // input command
 float rin = 0.0f;
@@ -136,7 +74,6 @@ typedef enum{
 }car_state_t;
 
 static car_state_t car_state;
-static neural_state_t n_r;
 
 int encoder_right_counter;
 int encoder_left_counter;
@@ -241,6 +178,71 @@ void init_motor_CWCCW(void){
 		//GPIO_WriteBit(MOTOR_CWCCW_PORT,MOTOR_RIGHT_CWCCW_PIN,Bit_RESET);	
 }
 
+void init_Neural(neural_state_t *n_s){
+	// array initialization
+    array_1d_Init_2(neuralNumber, 0.0, n_s->x);
+    array_2d_Init(centerNumber, neuralNumber, move_distance/2, n_s->c);
+    array_1d_Init_2(neuralNumber, move_distance*10, n_s->b);
+    array_1d_Init(neuralNumber, 0.5, n_s->w);
+
+    // record the temporal array value    array_1d_Copy(neuralNumber, b, b_1);
+    array_1d_Copy(neuralNumber, n_s->w, n_s->w_1);
+    array_1d_Copy(neuralNumber, n_s->b, n_s->b_1);
+    array_2d_Copy(centerNumber, neuralNumber, n_s->c, n_s->c_1);
+	
+	// learning speed
+	n_s->eta = 0.15;
+
+	// PID parameter
+	n_s->kp = 3;
+	n_s->ki = 25;
+	n_s->kd = 3;
+
+	// PID parameter of last cycle
+	n_s->kp_1 = 1;
+	n_s->ki_1 = 3;
+	n_s->kd_1 = 1;
+
+	// dy/du = jacobian
+	n_s->yu = 0;
+	n_s->dyu = 0;
+
+	// output of reference model
+	n_s->rf_out = 0;
+	n_s->rf_out_1 = 0;
+	n_s->rf_out_2 = 0;
+
+	// output of neural identifier
+	n_s->ynout = 0;
+
+	// PID controller output and last 2 cycles
+	n_s->du = 0;
+	n_s->u = 0;
+	n_s->u_1 = 0;
+	n_s->u_2 = 0;
+
+	// error of identifier and PID controller
+	n_s->e_1 = 0; 
+	n_s->e_2 = 0;
+	n_s->erbf = 0;
+	n_s->e = 0;
+
+	n_s->erbf_avg = 0;
+}
+
+void neural_reset(neural_state_t *n_s){
+	n_s->xc[0] = 0;//e - e_1;
+	n_s->xc[1] = 0;
+	n_s->xc[2] = 0;//e - (2 * e_1) + e_2;
+	n_s->e = 0;
+	n_s->e_1 = 0;
+	n_s->e_2 = 0;
+	n_s->erbf = 0;
+	n_s->ynout = 0;
+	n_s->u_1 = 0;
+	n_s->u = 0;
+	n_s->du = 0;
+}
 
 /*============================================================================*/
 /*============================================================================*
@@ -322,17 +324,8 @@ void init_car(){
         init_encoder();
 		init_External_Interrupt();
 
-		// array initialization
-	    array_1d_Init_2(neuralNumber, 0.0, x);
-	    array_2d_Init(centerNumber, neuralNumber, move_distance/2, c);
-	    array_1d_Init_2(neuralNumber, move_distance*10, b);
-	    array_1d_Init(neuralNumber, 0.5, w);
-
-	    // record the temporal array value    array_1d_Copy(neuralNumber, b, b_1);
-	    array_1d_Copy(neuralNumber, w, w_1);
-	    array_1d_Copy(neuralNumber, b, b_1);
-	    array_2d_Copy(centerNumber, neuralNumber, c, c_1);
-        
+		init_Neural(&n_r);
+		init_Neural(&n_l);
 
 		carTimers = xTimerCreate("Car_State_Polling",	 ( CAR_POLLING_PERIOD), pdTRUE, ( void * ) 1,  Car_State_Polling );
 		xTimerStart( carTimers, 0 );
@@ -388,27 +381,12 @@ void Car_State_Polling(){
                 	count_l = 0;
                 	count_r = 0;
 					car_state=CAR_STATE_REST;
-					xc[0] = 0;//e - e_1;
-	        		xc[1] = 0;
-	        		xc[2] = 0;//e - (2 * e_1) + e_2;
-	        		e = 0;
-	        		e_1 = 0;
-	        		e_2 = 0;
-	        		erbf = 0;
-	        		ynout = 0;
-	        		u_1 = 0;
-	        		u = 0;
-	        		du = 0;
+					neural_reset(&n_r);
+					neural_reset(&n_l);
 	        		encoder_right_counter_1 = 0;
 	        		encoder_left_counter_1 = 0;
-					InitPID(&PID_Motor_R, Kp, Ki, Kd);
-					InitPID(&PID_Motor_L, Kp, Ki, Kd);
-//					proc_cmd("stop" , 125 , 125);
                 }
-				/*if(count>=CAR_MOVING_PERIOD){
-						count=0;
-						car_state=CAR_STATE_REST;
-				}*/
+				
 		}	
 		else if(car_state==CAR_STATE_MOVE_BACK){
                 
@@ -538,18 +516,6 @@ void PerformCommand(unsigned char group,unsigned char control_id, unsigned char 
 		    case EPW_ACTUATOR_B :                
 		        set_linearActuator_B_cmd(value , 255); /*the actuator of pwm_value is fixed. value is dir flag.*/
 		        break;
-		    case EPW_PID_ALG_KP :
-                 Kp = (float)value;
-		         InitPID(&PID_Motor_R , Kp/10.0f ,Ki,Kd);
-		        break;
-		    case EPW_PID_ALG_KI :
-                 Ki = (float)value;
-		         InitPID(&PID_Motor_R , Kp, Ki/10.0f, Kd);
-		        break;
-            case EPW_PID_ALG_KD :
-                 Kd = (float)value;
-		         InitPID(&PID_Motor_R , Kp, Ki, Kd/10.0f);
-		        break;
 		    default:
 		        ;
 		}
@@ -597,10 +563,159 @@ float exponential(float ld){
 	return result;
 }
 
+void neural_update(neural_state_t *n_s, float rin, int encoder_counter){
+	    int i = 0, j = 0;
+
+        // 1. RBFNN Output
+        n_s->ynout = 0;
+        for ( i = 0; i < neuralNumber; ++i)
+        {
+        	n_s->norm_c_2[i] = pow2((n_s->x[0] - n_s->c[0][i]), 2) + pow2((n_s->x[1] - n_s->c[1][i]), 2) + pow2((n_s->x[2] - n_s->c[2][i]), 2);
+            	            
+            float tmp = (((-0.5) * n_s->norm_c_2[i]));
+            tmp = tmp/ pow2(n_s->b[i], 2);
+            n_s->h[i] = exponential(tmp);
+            n_s->ynout = n_s->ynout + (n_s->h[i])*(n_s->w[i]);
+        }
+        
+        // 2 Get the motor speed of last clock cycle, and calculate the error of rbf
+        n_s->erbf = (float)encoder_counter - n_s->ynout;
+        n_s->erbf_record[4] = n_s->erbf_record[3];
+		n_s->erbf_record[3] = n_s->erbf_record[2];
+		n_s->erbf_record[2] = n_s->erbf_record[1];
+		n_s->erbf_record[1] = n_s->erbf_record[0];
+		n_s->erbf_record[0] = abs2(n_s->erbf);
+		n_s->erbf_avg = (n_s->erbf_record[0] + n_s->erbf_record[1] + n_s->erbf_record[2] + n_s->erbf_record[3] + n_s->erbf_record[4])/5.0;
+
+        // 3. Update w of RBFNN
+        for ( i = 0; i < neuralNumber; ++i)
+        {
+        	float tmp = n_s->erbf * n_s->h[i];
+            n_s->dw[i] = n_s->eta * tmp;
+            n_s->w_1[i] = n_s->w[i];
+            n_s->w[i] = n_s->w_1[i] + n_s->dw[i];
+        }
+
+        // 4. Update bj
+        for ( i = 0; i < neuralNumber; ++i)
+        {
+        	float tmp = n_s->eta * n_s->erbf;
+        	tmp = tmp * n_s->w[i];
+        	tmp = tmp * n_s->h[i];
+        	tmp = tmp * n_s->norm_c_2[i];
+        	tmp = tmp / pow2(n_s->b[i], 3);
+            n_s->db[i] = tmp;
+            n_s->b_1[i] = n_s->b[i];
+            n_s->b[i] = n_s->b_1[i] + n_s->db[i];
+        }
+
+        // 5. Update Cj
+        for ( i = 0; i < neuralNumber; ++i)
+        {
+            for ( j = 0; j < centerNumber; ++j)
+            {
+            	float tmp = n_s->eta * n_s->erbf;
+            	tmp = tmp * n_s->w[i];
+            	tmp = tmp * n_s->h[i];
+            	tmp = tmp * (n_s->x[j] - n_s->c[j][i]);
+            	tmp = tmp /  pow2(n_s->b[i], 2);
+            	n_s->dc[j][i] = tmp;
+                n_s->c_1[j][i] = n_s->c[j][i];
+                n_s->c[j][i] = n_s->c_1[j][i] + n_s->dc[j][i];	                
+            }
+        }
+
+        // 6. Calculate Jacobian
+        n_s->yu = 0;
+        for ( i = 0; i < neuralNumber; ++i)
+        {
+        	float tmp = n_s->w[i] * n_s->h[i];
+        	float tmp2 = (-1) * n_s->x[0];
+        	tmp = tmp *  (tmp2 + n_s->c[0][i]) ;
+        	tmp = tmp / pow2(n_s->b[i], 2);
+            n_s->yu = n_s->yu + tmp;
+        }
+        n_s->dyu = n_s->yu;
+
+        // 7. Update error
+        n_s->rf_out = referenceModel2(rin, n_s->rf_out_1, n_s->rf_out_2);
+        n_s->e = n_s->rf_out - (float)encoder_counter;
+        n_s->rf_out_2 = n_s->rf_out_1;
+        n_s->rf_out_1 = n_s->rf_out;
+
+        // 8. Incremental PID
+        n_s->xc[0] = n_s->e - n_s->e_1;
+        n_s->xc[1] = n_s->e;
+        n_s->xc[2] = n_s->e - (2 * n_s->e_1) + n_s->e_2; 
+
+        //int tmp_erbf = (int)(abs2(erbf)*100);
+        int tmp_erbf = (int)(n_s->erbf_avg * 100);
+        if ((tmp_erbf < 200) && (encoder_counter > 2)){
+	        float kp_add = n_s->eta * n_s->e;
+	        kp_add = kp_add * n_s->dyu;
+	        kp_add = kp_add * n_s->xc[0];
+	        
+	        float ki_add = n_s->eta * n_s->e;
+	        ki_add = ki_add * n_s->dyu;
+	        ki_add = ki_add * n_s->xc[1];
+	        
+	        float kd_add = n_s->eta * n_s->e;
+	        kd_add = kd_add * n_s->dyu;
+	        kd_add = kd_add * n_s->xc[2];
+	        
+	        // 10. update kp(k-1) ki(k-1) kd(k-1)
+	        n_s->kp_1 = n_s->kp;
+	        n_s->ki_1 = n_s->ki;
+	        n_s->kd_1 = n_s->kd;
+
+	        // 9. Update the parameter of PID controller    
+	        n_s->kp = n_s->kp_1 + kp_add;
+	        n_s->ki = n_s->ki_1 + ki_add;
+	        n_s->kd = n_s->kd_1 + kd_add;
+	        if (n_s->kp < 0)
+	        {
+	        	n_s->kp = n_s->kp_1;
+	        }
+	        if (n_s->ki < 0)
+	        {
+	        	n_s->ki = n_s->ki_1;
+	        }
+	        if (n_s->kd < 0)
+	        {
+	        	n_s->kd = n_s->ki_1;
+	        }		       
+	    }
+
+        // 11. Calculate the output of PID controller
+        n_s->du = n_s->kp * n_s->xc[0] + n_s->ki * n_s->xc[1] + n_s->kd * n_s->xc[2];
+        n_s->u = n_s->u_1 + n_s->du;
+        if (n_s->u < 0)
+        {
+        	n_s->u = 0;
+        }else if(n_s->u > 100) {
+        	n_s->u = 100;
+        }
+
+        // 12. update yout(k-1) u(k-1)
+        n_s->yout_1 = n_s->x[1];
+        n_s->u_2 = n_s->u_1;
+        n_s->u_1 = n_s->u;
+
+        // 13. update e(k-1) e(k-2)
+        n_s->e_2 = n_s->e_1;
+        n_s->e_1 = n_s->e;
+
+        // 14. update input of RBFNN
+        n_s->x[0] = n_s->du;
+        n_s->x[1] = (float)encoder_counter;
+        n_s->x[2] = n_s->yout_1;
+}
+
 void neural_task(void *p)
 {
 	float erbf_record[5] = {0};
 	float erbf_avg = 0;
+	int i,j;
 	while(1){
 		detachInterrupt(EXTI_Line0); /*close external interrupt 0*/ 
 		detachInterrupt(EXTI_Line1); /*close external interrupt 1*/ 
@@ -611,157 +726,14 @@ void neural_task(void *p)
 	    	rin = 0.0;
 	    }
 
-        int i = 0, j = 0;
+	    getMotorData();
+	    neural_update(&n_r, rin, encoder_right_counter_1);
+	    neural_update(&n_l, rin, encoder_left_counter_1);
 
-        // 2. RBFNN Output
-        ynout = 0;
-        for ( i = 0; i < neuralNumber; ++i)
-        {
-        	norm_c_2[i] = pow2((x[0] - c[0][i]), 2) + pow2((x[1] - c[1][i]), 2) + pow2((x[2] - c[2][i]), 2);
-            	            
-            float tmp = (((-0.5) * norm_c_2[i]));
-            tmp = tmp/ pow2(b[i], 2);
-            h[i] = exponential(tmp);
-            ynout = ynout + h[i]*w[i];
-        }
-        
-        // 2.5 Get the motor speed of last clock cycle, and calculate the error of rbf
-        getMotorData();
-        erbf = (float)encoder_right_counter_1 - ynout;
-        erbf_record[4] = erbf_record[3];
-		erbf_record[3] = erbf_record[2];
-		erbf_record[2] = erbf_record[1];
-		erbf_record[1] = erbf_record[0];
-		erbf_record[0] = abs2(erbf);
-		erbf_avg = (erbf_record[0] + erbf_record[1] + erbf_record[2] + erbf_record[3] + erbf_record[4])/5.0;
+	    float input_l =  n_l.u_1;
+	    float input_r =  n_r.u_1;
 
-        // 3. Update w of RBFNN
-        for ( i = 0; i < neuralNumber; ++i)
-        {
-        	float tmp = erbf * h[i];
-            dw[i] = eta * tmp;
-            w_1[i] = w[i];
-            w[i] = w_1[i] + dw[i];
-        }
-
-        // 4. Update bj
-        for ( i = 0; i < neuralNumber; ++i)
-        {
-        	float tmp = eta * erbf;
-        	tmp = tmp * w[i];
-        	tmp = tmp * h[i];
-        	tmp = tmp * norm_c_2[i];
-        	tmp = tmp / pow2(b[i], 3);
-            db[i] = tmp;
-            b_1[i] = b[i];
-            b[i] = b_1[i] + db[i];
-        }
-
-        // 5. Update Cj
-        for ( i = 0; i < neuralNumber; ++i)
-        {
-            for ( j = 0; j < centerNumber; ++j)
-            {
-            	float tmp = eta * erbf;
-            	tmp = tmp * w[i];
-            	tmp = tmp * h[i];
-            	tmp = tmp * (x[j] - c[j][i]);
-            	tmp = tmp /  pow2(b[i], 2);
-            	dc[j][i] = tmp;
-                c_1[j][i] = c[j][i];
-                c[j][i] = c_1[j][i] + dc[j][i];	                
-            }
-        }
-
-        // 6. Calculate Jacobian
-        yu = 0;
-        for ( i = 0; i < neuralNumber; ++i)
-        {
-        	float tmp = w[i] * h[i];
-        	float tmp2 = (-1) * x[0];
-        	tmp = tmp *  (tmp2 + c[0][i]) ;
-        	tmp = tmp / pow2(b[i], 2);
-            yu = yu + tmp;
-        }
-        dyu = yu;
-
-        // 7. Update error
-#if RF == 1 
-        rf_out = referenceModel2(rin, rf_out_1, rf_out_2);
-        e = rf_out - (float)encoder_right_counter_1;
-        rf_out_2 = rf_out_1;
-        rf_out_1 = rf_out;
-#else
-        e = rin - (float)encoder_right_counter_1;
-#endif
-        // 8. Incremental PID
-        xc[0] = e - e_1;
-        xc[1] = e;
-        xc[2] = e - (2 * e_1) + e_2; 
-
-        //int tmp_erbf = (int)(abs2(erbf)*100);
-        int tmp_erbf = (int)(erbf_avg * 100);
-        if ((tmp_erbf < 200) && (encoder_right_counter_1 > 2)){
-	        float kp_add = eta * e;
-	        kp_add = kp_add * dyu;
-	        kp_add = kp_add * xc[0];
-	        
-	        float ki_add = eta * e;
-	        ki_add = ki_add * dyu;
-	        ki_add = ki_add * xc[1];
-	        
-	        float kd_add = eta * e;
-	        kd_add = kd_add * dyu;
-	        kd_add = kd_add * xc[2];
-	        
-	        // 10. update kp(k-1) ki(k-1) kd(k-1)
-	        kp_1 = kp;
-	        ki_1 = ki;
-	        kd_1 = kd;
-
-	        // 9. Update the parameter of PID controller    
-	        kp = kp_1 + kp_add;
-	        ki = ki_1 + ki_add;
-	        kd = kd_1 + kd_add;
-	        if (kp < 0)
-	        {
-	        	kp = kp_1;
-	        }
-	        if (ki < 0)
-	        {
-	        	ki = ki_1;
-	        }
-	        if (kd < 0)
-	        {
-	        	kd = ki_1;
-	        }		       
-	    }
-
-        // 11. Calculate the output of PID controller
-        du = kp * xc[0] + ki * xc[1] + kd * xc[2];
-        u = u_1 + du;
-        if (u < 0)
-        {
-        	u = 0;
-        }else if(u > 100) {
-        	u = 100;
-        }
-
-        // 12. update yout(k-1) u(k-1)
-        yout_1 = x[1];
-        u_2 = u_1;
-        u_1 = u;
-
-        // 13. update e(k-1) e(k-2)
-        e_2 = e_1;
-        e_1 = e;
-
-        // 14. update input of RBFNN
-        x[0] = du;
-        x[1] = (float)encoder_right_counter_1;
-        x[2] = yout_1;
-
-        proc_cmd("forward", 125, (125 + (int)u_1));
+        proc_cmd("forward", 125+(int)input_l, 125+(int)input_r);
 
 	    attachInterrupt(EXTI_Line0); 
 		attachInterrupt(EXTI_Line1);
@@ -776,9 +748,9 @@ void Show_data_Polling(void)
 	//printf("fff\n");
 //	printf("erbf = %d ", (int)erbf);
 //	printf("yn = %d ", (int)ynout);
-	printf("%d %d %d\n", (int) encoder_right_counter_1, (int)ynout, (int)erbf);
+	printf("%d %d %d\n", (int) encoder_right_counter_1, (int)n_r.ynout, (int)n_r.erbf);
 	//printf("%d %d %d\n", xc[0], xc[1], xc[2]);
-    printf("p=%d i=%d d=%d \n", (int)(kp*100), (int)(ki*100), (int)(kd*100));
+    printf("p=%d i=%d d=%d \n", (int)(n_r.kp*100), (int)(n_r.ki*100), (int)(n_r.kd*100));
 //    printf("c * 100 = %d \n", (int)(c[0][0]*100));
  //   printf("db * 100 = %d \n", (int)(db[0]*100));
    // printf("dw * 100 = %d \n", (int)(dw[0]*100));

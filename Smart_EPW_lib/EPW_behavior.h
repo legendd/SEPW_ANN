@@ -38,6 +38,20 @@
 #define ENCODER_RIGHT_PHASE_B_PIN                                 GPIO_Pin_3
 /*===============end of define  the all by pins========================*/
 
+#define CAR_POLLING_PERIOD  20//unit : ms
+#define SHOW_DATA_PERIOD  2000
+#define GET_MOTOR_PERIOD   50
+#define MOVE_PERIOD 3000
+
+#define MOTOR_CW 0
+#define MOTOR_CCW 1
+
+#define PI 3.14
+#define ts 0.001
+#define neuralNumber  6
+#define centerNumber  3
+#define RF 1s
+
 extern void attachInterrupt(uint32_t EXTI_LineX);
 extern void Car_State_Polling();
 extern void detachInterrupt(uint32_t EXTI_LineX);
@@ -56,5 +70,57 @@ extern void Get_Motor_Polling(void);
 extern void init_motor_CWCCW(void);
 
 
+typedef struct _neural_state_t {
+	float eta;
+	float kp;
+	float ki;
+	float kd;
+
+	float kp_1;
+	float ki_1;
+	float kd_1;
+
+	float yu;
+	float dyu;
+
+	float rf_out;
+	float rf_out_1;
+	float rf_out_2;
+
+	float h[neuralNumber];
+	float ynout;
+	float yout_1;
+
+	float du;
+	float u;
+	float u_1;
+	float u_2;
+
+	float e_1;
+	float e_2;
+	float erbf;
+	float e;
+	float erbf_record[5];
+	float erbf_avg;
+
+	float x[centerNumber];
+
+	float c[centerNumber][neuralNumber];
+	float dc[centerNumber][neuralNumber];
+
+	float b[neuralNumber];
+	float db[neuralNumber];
+
+	float w[neuralNumber];
+	float dw[neuralNumber];
+
+	float c_1[centerNumber][neuralNumber];
+	float b_1[neuralNumber];
+	float w_1[neuralNumber];
+
+	float xc[centerNumber];
+
+	float norm_c_2[neuralNumber];
+} neural_state_t;
 
 #endif /* __CAR_BEHAVIOR_H__ */

@@ -14,7 +14,6 @@
 #include "EPW_command.h"
 
 
-extern float rpm_left_motor,rpm_right_motor;
 extern int encoder_left_counter,encoder_right_counter;
 
 /*============================================================================*
@@ -48,10 +47,13 @@ void receive_task(void *p)
 						for( i = 0 ; i< MAX_STRLEN ; i++){
 								received_string[i]= 0;
 						}
-				} 
+				}
+            vTaskDelay(100); 
 
 		}
 }
+
+
 
 #define SEND_OUT_PERIOD 1000 /*ms*/
 #define DECLARE_EPW_INFO(info_name, info_id, info_value) {.name=info_name, .id=info_id, .value=info_value}
@@ -76,11 +78,11 @@ void send_out_task(void *p){
         distance_cm[1]=(unsigned char)Get_CH2Distance();
         distance_cm[2]=(unsigned char)Get_CH3Distance();
         distance_cm[3]=(unsigned char)Get_CH4Distance();
-        motor_L_rpm=(unsigned char)rpm_left_motor;
-        motor_R_rpm=(unsigned char)rpm_right_motor;
+//        motor_L_rpm=(unsigned char)rpm_left_motor;
+//        motor_R_rpm=(unsigned char)rpm_right_motor;
 
         
-#ifdef DEBUG_MODE
+#if 0
         printf("----------------------Debug mode-------------------------------\r\n");
         for(i=0;i<sizeof(EPW_info_list)/sizeof(EPW_info);i++){
             printf("EPW_issue name:%s   EPW_issue_id:%d EPW_issue_value:%d\r\n",EPW_info_list[i].name,EPW_info_list[i].id, *(EPW_info_list[i].value));
@@ -89,7 +91,7 @@ void send_out_task(void *p){
         
         printf("%d %d %d %d  encoder counter: %d %d\r\n",distance_cm[0],distance_cm[1],distance_cm[2],distance_cm[3],encoder_left_counter,encoder_right_counter);
         
-#else 
+ 
         printf("cmd%c%c%cend",EPW_cmd_group,EPW_ULTRASONIC_0,distance_cm[0] );
         printf("cmd%c%c%cend",EPW_cmd_group,EPW_ULTRASONIC_1,distance_cm[1] );        
         printf("cmd%c%c%cend",EPW_cmd_group,EPW_ULTRASONIC_2,distance_cm[2] );        
