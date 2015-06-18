@@ -39,9 +39,9 @@
 /*===============end of define  the all by pins========================*/
 
 #define CAR_POLLING_PERIOD  20//unit : ms
-#define SHOW_DATA_PERIOD  2000
+#define SHOW_DATA_PERIOD  500
 #define GET_MOTOR_PERIOD   50
-#define MOVE_PERIOD 3000
+#define MOVE_PERIOD 1500
 
 #define MOTOR_CW 0
 #define MOTOR_CCW 1
@@ -51,6 +51,7 @@
 #define neuralNumber  6
 #define centerNumber  3
 #define RF 1s
+#define NEURAL_PERIOD 30
 
 extern void attachInterrupt(uint32_t EXTI_LineX);
 extern void Car_State_Polling();

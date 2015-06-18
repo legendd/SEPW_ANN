@@ -323,9 +323,15 @@ void init_car(){
         init_motor_CWCCW();
         init_encoder();
 		init_External_Interrupt();
-
 		init_Neural(&n_r);
 		init_Neural(&n_l);
+
+		printf("Neuron Number = %d", neuralNumber);
+		printf("distance = %d\n", (int)move_distance);
+		printf("Neural task delay period = %d\n", NEURAL_PERIOD);
+		printf("initial Kp = %d, Ki = %d, Kd = %d",  (int)(n_r.kp*100), (int)(n_r.ki*100), (int)(n_r.kd*100));
+		printf("Mover period = %d\n", MOVE_PERIOD);
+		printf("learning speed = %d\n", n_r.eta);
 
 		carTimers = xTimerCreate("Car_State_Polling",	 ( CAR_POLLING_PERIOD), pdTRUE, ( void * ) 1,  Car_State_Polling );
 		xTimerStart( carTimers, 0 );
@@ -724,11 +730,14 @@ void neural_task(void *p)
 	    	rin = move_distance;
 	    }else{
 	    	rin = 0.0;
+	    	count_l = 0;
+	    	count_r = 0;
 	    }
 
 	    getMotorData();
+	    float err = (float)(encoder_right_counter_1 - encoder_left_counter_1);
 	    neural_update(&n_r, rin, encoder_right_counter_1);
-	    neural_update(&n_l, rin, encoder_left_counter_1);
+	    neural_update(&n_l, rin+err, encoder_left_counter_1);
 
 	    float input_l =  n_l.u_1;
 	    float input_r =  n_r.u_1;
@@ -737,20 +746,22 @@ void neural_task(void *p)
 
 	    attachInterrupt(EXTI_Line0); 
 		attachInterrupt(EXTI_Line1);
-	    vTaskDelay(20);
+	    vTaskDelay(NEURAL_PERIOD);
 	}
 }
 void Show_data_Polling(void)
 {
+	printf("l : %d r : %d\n", count_l, count_r);
 	//int tmp_erbf = (erbf*100); 
 	//tmp_erbf = tmp_erbf / encoder_right_counter_1;
 	//tmp_erbf = tmp_erbf*100;
 	//printf("fff\n");
 //	printf("erbf = %d ", (int)erbf);
 //	printf("yn = %d ", (int)ynout);
-	printf("%d %d %d\n", (int) encoder_right_counter_1, (int)n_r.ynout, (int)n_r.erbf);
+//	printf("%d %d %d\n", (int) encoder_right_counter_1, (int)n_r.ynout, (int)n_r.erbf);
 	//printf("%d %d %d\n", xc[0], xc[1], xc[2]);
-    printf("p=%d i=%d d=%d \n", (int)(n_r.kp*100), (int)(n_r.ki*100), (int)(n_r.kd*100));
+    printf("R %d %d %d \n", (int)(n_r.kp*100), (int)(n_r.ki*100), (int)(n_r.kd*100));
+    printf("L %d %d %d \n", (int)(n_l.kp*100), (int)(n_l.ki*100), (int)(n_l.kd*100));
 //    printf("c * 100 = %d \n", (int)(c[0][0]*100));
  //   printf("db * 100 = %d \n", (int)(db[0]*100));
    // printf("dw * 100 = %d \n", (int)(dw[0]*100));
