@@ -10,10 +10,12 @@
 #include "EPW_command.h"
 #include "PID.h"
 
+#define B_phase 0
+
 int encoder_left_counter_1;
 int encoder_right_counter_1;
 
-float move_distance = 10.0;
+float move_distance = 8.0;
 
 neural_state_t n_r;
 neural_state_t n_l;
@@ -181,8 +183,8 @@ void init_motor_CWCCW(void){
 void init_Neural(neural_state_t *n_s){
 	// array initialization
     array_1d_Init_2(neuralNumber, 0.0, n_s->x);
-    array_2d_Init(centerNumber, neuralNumber, move_distance, n_s->c);
-    array_1d_Init_2(neuralNumber, move_distance*10, n_s->b);
+    array_2d_Init(centerNumber, neuralNumber, move_distance/2, n_s->c);
+    array_1d_Init_2(neuralNumber, move_distance*5, n_s->b);
     array_1d_Init(neuralNumber, 0.5, n_s->w);
 
     // record the temporal array value    array_1d_Copy(neuralNumber, b, b_1);
@@ -195,13 +197,13 @@ void init_Neural(neural_state_t *n_s){
 
 	// PID parameter
 	n_s->kp = 3;
-	n_s->ki = 28;
-	n_s->kd = 3;
+	n_s->ki = 25;
+	n_s->kd = 2;
 
 	// PID parameter of last cycle
 	n_s->kp_1 = 3;
-	n_s->ki_1 = 28;
-	n_s->kd_1 = 3;
+	n_s->ki_1 = 25;
+	n_s->kd_1 = 2;
 
 	// dy/du = jacobian
 	n_s->yu = 0;
@@ -315,7 +317,7 @@ void init_External_Interrupt(void){
 		NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
 		NVIC_Init(&NVIC_InitStructure);
 #endif
-#if 0
+#if B_phase == 1
 		/* Connect EXTI Line2 to PA2 pin */
 		SYSCFG_EXTILineConfig(EXTI_PortSourceGPIOA,EXTI_PinSource2);
 		EXTI_InitStruct.EXTI_Line = EXTI_Line2;
@@ -624,7 +626,7 @@ void neural_update(neural_state_t *n_s, float rin, int encoder_counter){
         }
         
         // 2 Get the motor speed of last clock cycle, and calculate the error of rbf
-        n_s->erbf = (float)encoder_counter - n_s->ynout;
+        n_s->erbf = encoder_counter - n_s->ynout;
         n_s->erbf_record[4] = n_s->erbf_record[3];
 		n_s->erbf_record[3] = n_s->erbf_record[2];
 		n_s->erbf_record[2] = n_s->erbf_record[1];
@@ -761,8 +763,10 @@ void neural_task(void *p)
 	while(1){
 		detachInterrupt(EXTI_Line0); /*close external interrupt 0*/ 
 		detachInterrupt(EXTI_Line1); /*close external interrupt 1*/ 
-//		detachInterrupt(EXTI_Line2); /*close external interrupt 2*/ 
-//		detachInterrupt(EXTI_Line3); /*close external interrupt 3*/ 
+#if B_phase == 1
+		detachInterrupt(EXTI_Line2); /*close external interrupt 2*/ 
+		detachInterrupt(EXTI_Line3); /*close external interrupt 3*/ 
+#endif
 
 	    if(car_state == CAR_STATE_MOVE_FORWARD){
 	    	rin = move_distance;
@@ -821,8 +825,10 @@ void neural_task(void *p)
 
 	    attachInterrupt(EXTI_Line0); 
 		attachInterrupt(EXTI_Line1);
-//		attachInterrupt(EXTI_Line2); 
-//		attachInterrupt(EXTI_Line3);
+#if B_phase == 1
+		attachInterrupt(EXTI_Line2); 
+		attachInterrupt(EXTI_Line3);
+#endif
 	    vTaskDelay(NEURAL_PERIOD);
 	}
 }
@@ -837,13 +843,14 @@ void Show_data_Polling(void)
 	//printf("fff\n");
 //	printf("erbf = %d ", (int)erbf);
 //	printf("yn = %d ", (int)ynout);
-//	printf("r %d %d %d\n", (int) encoder_right_counter_1, (int)n_r.ynout, (int)n_r.erbf_avg);
-//	printf("l %d %d %d\n", (int) encoder_left_counter_1, (int)n_l.ynout, (int)n_l.erbf_avg);
-	printf("erbf %d \n", (int)n_r.erbf_avg);
-	printf("erbf %d \n", (int)n_l.erbf_avg);
+	float testing = encoder_right_counter_1 - n_r.ynout;
+	printf("r %d %d %d %d\n", (int) encoder_right_counter_1, (int)n_r.ynout, (int)n_r.erbf, (int)testing);
+	//printf("l %d %d %d\n", (int) encoder_left_counter_1, (int)n_l.ynout, (int)n_l.erbf,);
+//	printf("erbf %d \n", (int)n_r.erbf_avg);
+//	printf("erbf %d \n", (int)n_l.erbf_avg);
 	//printf("%d %d %d\n", xc[0], xc[1], xc[2]);
-    printf("R %d %d %d \n", (int)(n_r.kp*100), (int)(n_r.ki*100), (int)(n_r.kd*100));
-    printf("L %d %d %d \n", (int)(n_l.kp*100), (int)(n_l.ki*100), (int)(n_l.kd*100));
+//    printf("R %d %d %d \n", (int)(n_r.kp*100), (int)(n_r.ki*100), (int)(n_r.kd*100));
+//    printf("L %d %d %d \n", (int)(n_l.kp*100), (int)(n_l.ki*100), (int)(n_l.kd*100));
 //    printf("c * 100 = %d \n", (int)(c[0][0]*100));
  //   printf("db * 100 = %d \n", (int)(db[0]*100));
    // printf("dw * 100 = %d \n", (int)(dw[0]*100));
@@ -890,7 +897,7 @@ void EXTI1_IRQHandler(){
 				EXTI_ClearITPendingBit(EXTI_Line1);
 		}
 }
-#if 0
+#if B_phase == 1
 void EXTI2_IRQHandler(){
 
 		if(EXTI_GetITStatus(EXTI_Line2) != RESET)
