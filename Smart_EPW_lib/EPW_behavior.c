@@ -13,7 +13,7 @@
 int encoder_left_counter_1;
 int encoder_right_counter_1;
 
-float move_distance = 10.0;
+float move_distance = 4.0;
 
 neural_state_t n_r;
 neural_state_t n_l;
@@ -326,12 +326,12 @@ void init_car(){
 		init_Neural(&n_r);
 		init_Neural(&n_l);
 
-		printf("Neuron Number = %d", neuralNumber);
-		printf("distance = %d\n", (int)move_distance);
-		printf("Neural task delay period = %d\n", NEURAL_PERIOD);
+		//printf("Neuron Number = %d", neuralNumber);
+		//printf("distance = %d\n", move_distance);
+		//rintf("Neural task delay period = %d\n", NEURAL_PERIOD);
 		printf("initial Kp = %d, Ki = %d, Kd = %d",  (int)(n_r.kp*100), (int)(n_r.ki*100), (int)(n_r.kd*100));
-		printf("Mover period = %d\n", MOVE_PERIOD);
-		printf("learning speed = %d\n", n_r.eta);
+		//printf("Move period = %d\n", MOVE_PERIOD);
+		printf("learning speed = %d\n", (int)(n_r.eta*100));
 
 		carTimers = xTimerCreate("Car_State_Polling",	 ( CAR_POLLING_PERIOD), pdTRUE, ( void * ) 1,  Car_State_Polling );
 		xTimerStart( carTimers, 0 );
@@ -403,17 +403,26 @@ void Car_State_Polling(){
 				}
 		}
         else if(car_state==CAR_STATE_MOVE_LEFT){
-                count++;
-				if(count>=CAR_MOVING_PERIOD){
-						count=0;
-						car_state=CAR_STATE_REST;
-				}
+                if (count_r >= MOVE_LEFT_RIGHT_PERIOD)  //2000 == 4 cycle
+                {
+                	count_l = 0;
+                	count_r = 0;
+					car_state=CAR_STATE_REST;
+					neural_reset(&n_r);
+					neural_reset(&n_l);
+	        		encoder_right_counter_1 = 0;
+	        		encoder_left_counter_1 = 0;
+                }
 		}   
         else if(car_state==CAR_STATE_MOVE_RIGHT){
-                count++;
-				if(count>=CAR_MOVING_PERIOD){
-						count=0;
-						car_state=CAR_STATE_REST;
+                if(count_r >= MOVE_LEFT_RIGHT_PERIOD){
+					count_l = 0;
+                	count_r = 0;
+					car_state=CAR_STATE_REST;
+					neural_reset(&n_r);
+					neural_reset(&n_l);
+	        		encoder_right_counter_1 = 0;
+	        		encoder_left_counter_1 = 0;
     		    }
 		}
 }
@@ -698,8 +707,8 @@ void neural_update(neural_state_t *n_s, float rin, int encoder_counter){
         if (n_s->u < 0)
         {
         	n_s->u = 0;
-        }else if(n_s->u > 100) {
-        	n_s->u = 100;
+        }else if(n_s->u > 110) {
+        	n_s->u = 110;
         }
 
         // 12. update yout(k-1) u(k-1)
@@ -728,21 +737,55 @@ void neural_task(void *p)
 
 	    if(car_state == CAR_STATE_MOVE_FORWARD){
 	    	rin = move_distance;
-	    }else{
+	    	getMotorData();
+		    float err = (float)(encoder_right_counter_1 - encoder_left_counter_1);
+		    neural_update(&n_r, rin, encoder_right_counter_1);
+		    neural_update(&n_l, rin+err, encoder_left_counter_1);
+
+		    float input_l =  n_l.u_1;
+		    float input_r =  n_r.u_1;
+
+	        proc_cmd("forward", 125+(int)input_l, 125+(int)input_r);
+
+	    }
+	    else if (car_state == CAR_STATE_MOVE_LEFT){
+	    	rin = 1;
+	    	getMotorData();
+
+	    	neural_update(&n_r, rin, encoder_right_counter_1);
+		    neural_update(&n_l, rin, encoder_left_counter_1);
+
+		    float input_l =  n_l.u_1;
+		    float input_r =  n_r.u_1;
+
+	        proc_cmd("forward", 125-(int)input_l, 125+(int)input_r);
+	    }
+	    else if (car_state == CAR_STATE_MOVE_RIGHT){
+	    	rin = 1;
+	    	getMotorData();
+
+	    	neural_update(&n_r, rin, encoder_right_counter_1);
+		    neural_update(&n_l, rin, encoder_left_counter_1);
+
+		    float input_l =  n_l.u_1;
+		    float input_r =  n_r.u_1;
+
+	        proc_cmd("forward", 125+(int)input_l, 125-(int)input_r);
+	    }
+
+	    else{
 	    	rin = 0.0;
 	    	count_l = 0;
 	    	count_r = 0;
+	    	getMotorData();
+		    neural_update(&n_r, rin, encoder_right_counter_1);
+		    neural_update(&n_l, rin, encoder_left_counter_1);
+
+		    float input_l =  n_l.u_1;
+		    float input_r =  n_r.u_1;
+
+	        proc_cmd("forward", 125+(int)input_l, 125+(int)input_r);
 	    }
-
-	    getMotorData();
-	    float err = (float)(encoder_right_counter_1 - encoder_left_counter_1);
-	    neural_update(&n_r, rin, encoder_right_counter_1);
-	    neural_update(&n_l, rin+err, encoder_left_counter_1);
-
-	    float input_l =  n_l.u_1;
-	    float input_r =  n_r.u_1;
-
-        proc_cmd("forward", 125+(int)input_l, 125+(int)input_r);
 
 	    attachInterrupt(EXTI_Line0); 
 		attachInterrupt(EXTI_Line1);
@@ -751,14 +794,15 @@ void neural_task(void *p)
 }
 void Show_data_Polling(void)
 {
-	printf("l : %d r : %d\n", count_l, count_r);
+//	printf("l : %d r : %d\n", count_l, count_r);
 	//int tmp_erbf = (erbf*100); 
 	//tmp_erbf = tmp_erbf / encoder_right_counter_1;
 	//tmp_erbf = tmp_erbf*100;
 	//printf("fff\n");
 //	printf("erbf = %d ", (int)erbf);
 //	printf("yn = %d ", (int)ynout);
-//	printf("%d %d %d\n", (int) encoder_right_counter_1, (int)n_r.ynout, (int)n_r.erbf);
+	printf("r %d %d %d\n", (int) encoder_right_counter_1, (int)n_r.ynout, (int)n_r.erbf);
+	printf("l %d %d %d\n", (int) encoder_left_counter_1, (int)n_l.ynout, (int)n_l.erbf);
 	//printf("%d %d %d\n", xc[0], xc[1], xc[2]);
     printf("R %d %d %d \n", (int)(n_r.kp*100), (int)(n_r.ki*100), (int)(n_r.kd*100));
     printf("L %d %d %d \n", (int)(n_l.kp*100), (int)(n_l.ki*100), (int)(n_l.kd*100));

@@ -42,6 +42,7 @@
 #define SHOW_DATA_PERIOD  500
 #define GET_MOTOR_PERIOD   50
 #define MOVE_PERIOD 1500
+#define MOVE_LEFT_RIGHT_PERIOD 40
 
 #define MOTOR_CW 0
 #define MOTOR_CCW 1
