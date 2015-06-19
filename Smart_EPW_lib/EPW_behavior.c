@@ -13,7 +13,7 @@
 int encoder_left_counter_1;
 int encoder_right_counter_1;
 
-float move_distance = 4.0;
+float move_distance = 10.0;
 
 neural_state_t n_r;
 neural_state_t n_l;
@@ -310,6 +310,34 @@ void init_External_Interrupt(void){
 		EXTI_Init(&EXTI_InitStruct);
 		EXTI_ClearITPendingBit(EXTI_Line1);
 		NVIC_InitStructure.NVIC_IRQChannel = EXTI1_IRQn;
+		NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 3;
+		NVIC_InitStructure.NVIC_IRQChannelSubPriority = 3;
+		NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
+		NVIC_Init(&NVIC_InitStructure);
+
+		/* Connect EXTI Line3 to PA2 pin */
+		SYSCFG_EXTILineConfig(EXTI_PortSourceGPIOA,EXTI_PinSource2);
+		EXTI_InitStruct.EXTI_Line = EXTI_Line3;
+		EXTI_InitStruct.EXTI_Mode = EXTI_Mode_Interrupt;
+		EXTI_InitStruct.EXTI_Trigger = EXTI_Trigger_Rising_Falling;
+		EXTI_InitStruct.EXTI_LineCmd = ENABLE;
+		EXTI_Init(&EXTI_InitStruct);
+		EXTI_ClearITPendingBit(EXTI_Line4);
+		NVIC_InitStructure.NVIC_IRQChannel = EXTI2_IRQn;
+		NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 3;
+		NVIC_InitStructure.NVIC_IRQChannelSubPriority = 3;
+		NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
+		NVIC_Init(&NVIC_InitStructure);
+
+		/* Connect EXTI Line4 to PA3 pin */
+		SYSCFG_EXTILineConfig(EXTI_PortSourceGPIOA,EXTI_PinSource3);
+		EXTI_InitStruct.EXTI_Line = EXTI_Line4;
+		EXTI_InitStruct.EXTI_Mode = EXTI_Mode_Interrupt;
+		EXTI_InitStruct.EXTI_Trigger = EXTI_Trigger_Rising_Falling;
+		EXTI_InitStruct.EXTI_LineCmd = ENABLE;
+		EXTI_Init(&EXTI_InitStruct);
+		EXTI_ClearITPendingBit(EXTI_Line4);
+		NVIC_InitStructure.NVIC_IRQChannel = EXTI3_IRQn;
 		NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 3;
 		NVIC_InitStructure.NVIC_IRQChannelSubPriority = 3;
 		NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
@@ -804,8 +832,8 @@ void Show_data_Polling(void)
 	printf("r %d %d %d\n", (int) encoder_right_counter_1, (int)n_r.ynout, (int)n_r.erbf);
 	printf("l %d %d %d\n", (int) encoder_left_counter_1, (int)n_l.ynout, (int)n_l.erbf);
 	//printf("%d %d %d\n", xc[0], xc[1], xc[2]);
-    printf("R %d %d %d \n", (int)(n_r.kp*100), (int)(n_r.ki*100), (int)(n_r.kd*100));
-    printf("L %d %d %d \n", (int)(n_l.kp*100), (int)(n_l.ki*100), (int)(n_l.kd*100));
+//    printf("R %d %d %d \n", (int)(n_r.kp*100), (int)(n_r.ki*100), (int)(n_r.kd*100));
+//    printf("L %d %d %d \n", (int)(n_l.kp*100), (int)(n_l.ki*100), (int)(n_l.kd*100));
 //    printf("c * 100 = %d \n", (int)(c[0][0]*100));
  //   printf("db * 100 = %d \n", (int)(db[0]*100));
    // printf("dw * 100 = %d \n", (int)(dw[0]*100));
@@ -853,6 +881,24 @@ void EXTI1_IRQHandler(){
 		}
 }
 
+void EXTI2_IRQHandler(){
+
+		if(EXTI_GetITStatus(EXTI_Line2) != RESET)
+		{
+				encoder_left_counter++ ;
+				count_l ++;
+				EXTI_ClearITPendingBit(EXTI_Line2);
+		}
+}
+
+void EXTI3_IRQHandler(){
+		if(EXTI_GetITStatus(EXTI_Line3) != RESET)
+		{
+				encoder_right_counter++ ;
+				count_r ++;
+				EXTI_ClearITPendingBit(EXTI_Line3);
+		}
+}
 
 void detachInterrupt(uint32_t EXTI_LineX){
 		EXTI_InitTypeDef EXTI_InitStruct;
