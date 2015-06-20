@@ -10,12 +10,12 @@
 #include "EPW_command.h"
 #include "PID.h"
 
-#define B_phase 0
+#define B_phase 1
 
 int encoder_left_counter_1;
 int encoder_right_counter_1;
 
-float move_distance = 8.0;
+float move_distance = 10.0;
 
 neural_state_t n_r;
 neural_state_t n_l;
@@ -42,9 +42,12 @@ void array_1d_Init_2(int size, float value, float *array){
 // array[x][y]  array[i][j]
 void array_2d_Init(int size_x, int size_y, float value, float array[][size_y]){
     int i,j;
-    for ( i = 0; i < size_x; ++i)
-        for ( j = 0; j < size_y; ++j)
-            array[i][j] = (float)value;
+    for ( i = 0; i < size_x; ++i){
+    	float tmp = value / (float)size_x;
+        for ( j = 0; j < size_y; ++j){
+            array[i][j] = tmp*i;
+        }
+    }
 }
 
 // array2 = array1
@@ -183,8 +186,8 @@ void init_motor_CWCCW(void){
 void init_Neural(neural_state_t *n_s){
 	// array initialization
     array_1d_Init_2(neuralNumber, 0.0, n_s->x);
-    array_2d_Init(centerNumber, neuralNumber, move_distance/2, n_s->c);
-    array_1d_Init_2(neuralNumber, move_distance*5, n_s->b);
+    array_2d_Init(centerNumber, neuralNumber, move_distance, n_s->c);
+    array_1d_Init_2(neuralNumber, move_distance/6, n_s->b);
     array_1d_Init(neuralNumber, 0.5, n_s->w);
 
     // record the temporal array value    array_1d_Copy(neuralNumber, b, b_1);
@@ -196,14 +199,14 @@ void init_Neural(neural_state_t *n_s){
 	n_s->eta = 0.15;
 
 	// PID parameter
-	n_s->kp = 3;
-	n_s->ki = 25;
-	n_s->kd = 2;
+	n_s->kp = 1;
+	n_s->ki = 30;
+	n_s->kd = 0.7;
 
 	// PID parameter of last cycle
-	n_s->kp_1 = 3;
-	n_s->ki_1 = 25;
-	n_s->kd_1 = 2;
+	n_s->kp_1 = 1;
+	n_s->ki_1 = 30;
+	n_s->kd_1 = 0.7;
 
 	// dy/du = jacobian
 	n_s->yu = 0;
@@ -216,6 +219,7 @@ void init_Neural(neural_state_t *n_s){
 
 	// output of neural identifier
 	n_s->ynout = 0;
+	n_s->ynout_sum = 0;
 
 	// PID controller output and last 2 cycles
 	n_s->du = 0;
@@ -228,6 +232,7 @@ void init_Neural(neural_state_t *n_s){
 	n_s->e_2 = 0;
 	n_s->erbf = 0;
 	n_s->e = 0;
+	n_s->erbf_correct_times = 0;
 
 	n_s->erbf_avg = 0;
 }
@@ -240,7 +245,9 @@ void neural_reset(neural_state_t *n_s){
 	n_s->e_1 = 0;
 	n_s->e_2 = 0;
 	n_s->erbf = 0;
+	n_s->erbf_correct_times = 0;
 	n_s->ynout = 0;
+	n_s->ynout_sum = 0;
 	n_s->u_1 = 0;
 	n_s->u = 0;
 	n_s->du = 0;
@@ -317,7 +324,6 @@ void init_External_Interrupt(void){
 		NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
 		NVIC_Init(&NVIC_InitStructure);
 #endif
-#if B_phase == 1
 		/* Connect EXTI Line2 to PA2 pin */
 		SYSCFG_EXTILineConfig(EXTI_PortSourceGPIOA,EXTI_PinSource2);
 		EXTI_InitStruct.EXTI_Line = EXTI_Line2;
@@ -345,7 +351,6 @@ void init_External_Interrupt(void){
 		NVIC_InitStructure.NVIC_IRQChannelSubPriority = 3;
 		NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
 		NVIC_Init(&NVIC_InitStructure);
-#endif
 }
 
 
@@ -368,8 +373,8 @@ void init_car(){
 		carTimers = xTimerCreate("Car_State_Polling",	 ( CAR_POLLING_PERIOD), pdTRUE, ( void * ) 1,  Car_State_Polling );
 		xTimerStart( carTimers, 0 );
 
-		Show_data_Timers = xTimerCreate("Show_data_Polling",( SHOW_DATA_PERIOD), pdTRUE, ( void * ) 1,  Show_data_Polling );
-		xTimerStart( Show_data_Timers, 0 );
+//		Show_data_Timers = xTimerCreate("Show_data_Polling",( SHOW_DATA_PERIOD), pdTRUE, ( void * ) 1,  Show_data_Polling );
+//		xTimerStart( Show_data_Timers, 0 );
 }
 
 
@@ -416,6 +421,15 @@ void Car_State_Polling(){
                                 
                 if (count_r >= MOVE_PERIOD)  //2000 == 4 cycle
                 {
+					printf("y_r=%d yn_r=%d erbf_r=%d \n", (int) count_r, (int)n_r.ynout_sum, (int)n_r.ynout);
+					printf("y_l=%d yn_l=%d erbf_l=%d\n", (int) count_l, (int)n_l.ynout_sum, (int)n_l.ynout);
+					printf("erbf_avg_r %d \n", (int)n_r.erbf_avg);
+					printf("erbf_avg_l %d \n", (int)n_l.erbf_avg);
+					printf("erbf_correct_times %d \n", (int)n_r.erbf_correct_times);
+					printf("erbf_correct_times %d \n", (int)n_l.erbf_correct_times);
+					//printf("%d %d %d\n", xc[0], xc[1], xc[2]);
+				    printf("PID R %d %d %d \n", (int)(n_r.kp*100), (int)(n_r.ki*100), (int)(n_r.kd*100));
+				    printf("PID L %d %d %d \n", (int)(n_l.kp*100), (int)(n_l.ki*100), (int)(n_l.kd*100));
                 	count_l = 0;
                 	count_r = 0;
 					car_state=CAR_STATE_REST;
@@ -624,6 +638,7 @@ void neural_update(neural_state_t *n_s, float rin, int encoder_counter){
             n_s->h[i] = exponential(tmp);
             n_s->ynout = n_s->ynout + (n_s->h[i])*(n_s->w[i]);
         }
+        n_s->ynout_sum += n_s->ynout;
         
         // 2 Get the motor speed of last clock cycle, and calculate the error of rbf
         n_s->erbf = encoder_counter - n_s->ynout;
@@ -698,6 +713,7 @@ void neural_update(neural_state_t *n_s, float rin, int encoder_counter){
         //int tmp_erbf = (int)(abs2(erbf)*100);
         int tmp_erbf = (int)(n_s->erbf_avg * 100);
         if ((tmp_erbf < 200) && (encoder_counter > 2)){
+        	n_s->erbf_correct_times ++;
 	        float kp_add = n_s->eta * n_s->e;
 	        kp_add = kp_add * n_s->dyu;
 	        kp_add = kp_add * n_s->xc[0];
@@ -763,19 +779,17 @@ void neural_task(void *p)
 	while(1){
 		detachInterrupt(EXTI_Line0); /*close external interrupt 0*/ 
 		detachInterrupt(EXTI_Line1); /*close external interrupt 1*/ 
-#if B_phase == 1
 		detachInterrupt(EXTI_Line2); /*close external interrupt 2*/ 
 		detachInterrupt(EXTI_Line3); /*close external interrupt 3*/ 
-#endif
 
 	    if(car_state == CAR_STATE_MOVE_FORWARD){
 	    	rin = move_distance;
 	    	getMotorData();
 		    
-//		    float err = ((float)(encoder_right_counter_1 - encoder_left_counter_1)/2.0);
+		    float err = ((float)(encoder_right_counter_1 - encoder_left_counter_1)/2.0);
 		    
-		    neural_update(&n_r, rin, encoder_right_counter_1);
-		    neural_update(&n_l, rin, encoder_left_counter_1);
+		    neural_update(&n_r, rin - err, encoder_right_counter_1);
+		    neural_update(&n_l, rin + err, encoder_left_counter_1);
 
 		    float input_l =  n_l.u_1;
 		    float input_r =  n_r.u_1;
@@ -825,10 +839,8 @@ void neural_task(void *p)
 
 	    attachInterrupt(EXTI_Line0); 
 		attachInterrupt(EXTI_Line1);
-#if B_phase == 1
 		attachInterrupt(EXTI_Line2); 
 		attachInterrupt(EXTI_Line3);
-#endif
 	    vTaskDelay(NEURAL_PERIOD);
 	}
 }
@@ -843,14 +855,13 @@ void Show_data_Polling(void)
 	//printf("fff\n");
 //	printf("erbf = %d ", (int)erbf);
 //	printf("yn = %d ", (int)ynout);
-	float testing = encoder_right_counter_1 - n_r.ynout;
-	printf("r %d %d %d %d\n", (int) encoder_right_counter_1, (int)n_r.ynout, (int)n_r.erbf, (int)testing);
-	//printf("l %d %d %d\n", (int) encoder_left_counter_1, (int)n_l.ynout, (int)n_l.erbf,);
+	printf("r %d %d %d \n", (int) encoder_right_counter_1, (int)n_r.ynout, (int)n_r.erbf);
+	printf("l %d %d %d\n", (int) encoder_left_counter_1, (int)n_l.ynout, (int)n_l.erbf);
 //	printf("erbf %d \n", (int)n_r.erbf_avg);
 //	printf("erbf %d \n", (int)n_l.erbf_avg);
 	//printf("%d %d %d\n", xc[0], xc[1], xc[2]);
-//    printf("R %d %d %d \n", (int)(n_r.kp*100), (int)(n_r.ki*100), (int)(n_r.kd*100));
-//    printf("L %d %d %d \n", (int)(n_l.kp*100), (int)(n_l.ki*100), (int)(n_l.kd*100));
+    printf("R %d %d %d \n", (int)(n_r.kp*100), (int)(n_r.ki*100), (int)(n_r.kd*100));
+    printf("L %d %d %d \n", (int)(n_l.kp*100), (int)(n_l.ki*100), (int)(n_l.kd*100));
 //    printf("c * 100 = %d \n", (int)(c[0][0]*100));
  //   printf("db * 100 = %d \n", (int)(db[0]*100));
    // printf("dw * 100 = %d \n", (int)(dw[0]*100));
@@ -897,7 +908,6 @@ void EXTI1_IRQHandler(){
 				EXTI_ClearITPendingBit(EXTI_Line1);
 		}
 }
-#if B_phase == 1
 void EXTI2_IRQHandler(){
 
 		if(EXTI_GetITStatus(EXTI_Line2) != RESET)
@@ -916,7 +926,6 @@ void EXTI3_IRQHandler(){
 				EXTI_ClearITPendingBit(EXTI_Line3);
 		}
 }
-#endif
 void detachInterrupt(uint32_t EXTI_LineX){
 		EXTI_InitTypeDef EXTI_InitStruct;
 		EXTI_InitStruct.EXTI_Line = EXTI_LineX;

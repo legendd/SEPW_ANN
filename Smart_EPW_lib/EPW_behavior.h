@@ -39,7 +39,7 @@
 /*===============end of define  the all by pins========================*/
 
 #define CAR_POLLING_PERIOD  20//unit : ms
-#define SHOW_DATA_PERIOD  500
+#define SHOW_DATA_PERIOD  2000
 #define GET_MOTOR_PERIOD   50
 #define MOVE_PERIOD 3000
 #define MOVE_LEFT_RIGHT_PERIOD 40
@@ -91,6 +91,7 @@ typedef struct _neural_state_t {
 
 	float h[neuralNumber];
 	float ynout;
+	float ynout_sum;
 	float yout_1;
 
 	float du;
@@ -104,6 +105,7 @@ typedef struct _neural_state_t {
 	float e;
 	float erbf_record[5];
 	float erbf_avg;
+	int erbf_correct_times;
 
 	float x[centerNumber];
 
