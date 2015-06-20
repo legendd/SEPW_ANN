@@ -15,7 +15,7 @@
 int encoder_left_counter_1;
 int encoder_right_counter_1;
 
-float move_distance = 10.0;
+float move_distance = 20.0;
 
 neural_state_t n_r;
 neural_state_t n_l;
@@ -712,7 +712,11 @@ void neural_update(neural_state_t *n_s, float rin, int encoder_counter){
 
         //int tmp_erbf = (int)(abs2(erbf)*100);
         int tmp_erbf = (int)(n_s->erbf_avg * 100);
-        if ((tmp_erbf < 200) && (encoder_counter > 2)){
+        if ((tmp_erbf < 100) && (encoder_counter > 1))
+        {
+        	n_s->erbf_correct_times ++;
+        }
+        if ((tmp_erbf < 100) && (encoder_counter > 1) && (n_s->erbf_correct_times >20)){
         	n_s->erbf_correct_times ++;
 	        float kp_add = n_s->eta * n_s->e;
 	        kp_add = kp_add * n_s->dyu;
