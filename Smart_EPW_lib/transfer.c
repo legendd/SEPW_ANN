@@ -49,7 +49,6 @@ void receive_task(void *p)
 						}
 				}
             vTaskDelay(100); 
-
 		}
 }
 

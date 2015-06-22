@@ -11,15 +11,20 @@
 #include "PID.h"
 
 #define B_phase 1
+#define NEURAL_IDENTIFIER 1
 
 int encoder_left_counter_1;
 int encoder_right_counter_1;
 int differential_counter = 0;
+int first_control = 0;
+int base_pwm_l = 120;
+int base_pwm_r = 120;
 
 float move_distance = 15.0;
 
 neural_state_t n_r;
 neural_state_t n_l;
+int err_sum = 0;
 
 // input command
 float rin = 0.0f;
@@ -88,8 +93,8 @@ int count_l = 0;
 int count_r = 0;
 
 /*pwm regulate of two motor */
-static int pwm_value_left = 125; /*default pwm value*/
-static int pwm_value_right = 125;
+static int pwm_value_left = 120; /*default pwm value*/
+static int pwm_value_right = 120;
 static int motor_speed_value = 1; /*global speed value, range is 0~10.
 static char flag;
 
@@ -184,7 +189,7 @@ void init_motor_CWCCW(void){
 		//GPIO_WriteBit(MOTOR_CWCCW_PORT,MOTOR_RIGHT_CWCCW_PIN,Bit_RESET);	
 }
 
-void init_Neural(neural_state_t *n_s){
+void init_Neural(neural_state_t *n_s, float KP, float KI, float KD){
 	// array initialization
     array_1d_Init_2(neuralNumber, 0.0, n_s->x);
     array_2d_Init(centerNumber, neuralNumber, move_distance, n_s->c);
@@ -200,14 +205,14 @@ void init_Neural(neural_state_t *n_s){
 	n_s->eta = 0.15;
 
 	// PID parameter
-	n_s->kp = 1;
-	n_s->ki = 60;
-	n_s->kd = 2;
+	n_s->kp = KP;
+	n_s->ki = KI;
+	n_s->kd = KD;
 
 	// PID parameter of last cycle
-	n_s->kp_1 = 1;
-	n_s->ki_1 = 60;
-	n_s->kd_1 = 2;
+	n_s->kp_1 = KP;
+	n_s->ki_1 = KI;
+	n_s->kd_1 = KD;
 
 	// dy/du = jacobian
 	n_s->yu = 0;
@@ -245,13 +250,13 @@ void neural_reset(neural_state_t *n_s){
 	n_s->e = 0;
 	n_s->e_1 = 0;
 	n_s->e_2 = 0;
-	n_s->erbf = 0;
+//	n_s->erbf = 0;
 	n_s->erbf_correct_times = 0;
-	n_s->ynout = 0;
+//	n_s->ynout = 0;
 	n_s->ynout_sum = 0;
-	n_s->u_1 = 0;
-	n_s->u = 0;
-	n_s->du = 0;
+//	n_s->u_1 = 0;
+//	n_s->u = 0;
+//	n_s->du = 0;
 }
 
 /*============================================================================*/
@@ -361,8 +366,8 @@ void init_car(){
         init_motor_CWCCW();
         init_encoder();
 		init_External_Interrupt();
-		init_Neural(&n_r);
-		init_Neural(&n_l);
+		init_Neural(&n_r, 1, 50, 1);
+		init_Neural(&n_l, 1.5, 50, 1);
 
 		//printf("Neuron Number = %d", neuralNumber);
 		//printf("distance = %d\n", move_distance);
@@ -402,11 +407,11 @@ void Car_State_Polling(){
         unsigned int distance[4];
         
 		if(car_state==CAR_STATE_IDLE){
-			proc_cmd("stop" , 125 , 125);
+			proc_cmd("stop" , base_pwm_l, base_pwm_r);
 				count=0;
 		}
 		else if(car_state==CAR_STATE_REST){
-				proc_cmd("stop" , 125 , 125);
+				proc_cmd("stop" , base_pwm_l, base_pwm_r);
 
 				if(count>=CAR_REST_PERIOD){
 						count=0;
@@ -414,26 +419,28 @@ void Car_State_Polling(){
 				}
 		}
 		else if(car_state==CAR_STATE_MOVE_FORWARD){
-                                
-                if (count_r >= MOVE_PERIOD)  //2000 == 4 cycle
-                {
-					printf("y_r=%d yn_r=%d erbf_r=%d \n", (int) count_r, (int)n_r.ynout_sum, (int)n_r.ynout);
-					printf("y_l=%d yn_l=%d erbf_l=%d\n", (int) count_l, (int)n_l.ynout_sum, (int)n_l.ynout);
-					printf("erbf_avg_r %d \n", (int)n_r.erbf_avg);
-					printf("erbf_avg_l %d \n", (int)n_l.erbf_avg);
-					printf("erbf_correct_times %d \n", (int)n_r.erbf_correct_times);
-					printf("erbf_correct_times %d \n", (int)n_l.erbf_correct_times);
-					//printf("%d %d %d\n", xc[0], xc[1], xc[2]);
-				    printf("PID R %d %d %d \n", (int)(n_r.kp*100), (int)(n_r.ki*100), (int)(n_r.kd*100));
-				    printf("PID L %d %d %d \n", (int)(n_l.kp*100), (int)(n_l.ki*100), (int)(n_l.kd*100));
-                	count_l = 0;
-                	count_r = 0;
-					car_state=CAR_STATE_REST;
-					neural_reset(&n_r);
-					neural_reset(&n_l);
-	        		encoder_right_counter_1 = 0;
-	        		encoder_left_counter_1 = 0;
-                }
+                            
+            if (count_r >= MOVE_PERIOD || count_l >= MOVE_PERIOD)  //2000 == 4 cycle
+            {
+				printf("y_r=%d yn_r=%d \n", (int) count_r, (int)n_r.ynout_sum);
+				printf("y_l=%d yn_l=%d \n", (int) count_l, (int)n_l.ynout_sum);
+				printf("erbf_avg_r %d \n", (int)n_r.erbf_avg);
+				printf("erbf_avg_l %d \n", (int)n_l.erbf_avg);
+				printf("erbf_correct_times %d \n", (int)n_r.erbf_correct_times);
+				printf("erbf_correct_times %d \n", (int)n_l.erbf_correct_times);
+				//printf("%d %d %d\n", xc[0], xc[1], xc[2]);
+			    printf("PID R %d %d %d \n", (int)(n_r.kp*100), (int)(n_r.ki*100), (int)(n_r.kd*100));
+			    printf("PID L %d %d %d \n", (int)(n_l.kp*100), (int)(n_l.ki*100), (int)(n_l.kd*100));
+			    printf("err_sum = %d \n", err_sum);
+            	count_l = 0;
+            	count_r = 0;
+				car_state=CAR_STATE_REST;
+				neural_reset(&n_r);
+				neural_reset(&n_l);
+        		encoder_right_counter_1 = 0;
+        		encoder_left_counter_1 = 0;
+        		err_sum = 0;
+            }
 				
 		}	
 		else if(car_state==CAR_STATE_MOVE_BACK){
@@ -444,7 +451,7 @@ void Car_State_Polling(){
 				}
 		}
         else if(car_state==CAR_STATE_MOVE_LEFT){
-                if (count_r >= MOVE_LEFT_RIGHT_PERIOD)  //2000 == 4 cycle
+                if (count_r >= MOVE_LEFT_RIGHT_PERIOD || count_l >= MOVE_LEFT_RIGHT_PERIOD)  //2000 == 4 cycle
                 {
                 	count_l = 0;
                 	count_r = 0;
@@ -456,7 +463,7 @@ void Car_State_Polling(){
                 }
 		}   
         else if(car_state==CAR_STATE_MOVE_RIGHT){
-                if(count_r >= MOVE_LEFT_RIGHT_PERIOD){
+                if(count_r >= MOVE_LEFT_RIGHT_PERIOD || count_l >= MOVE_LEFT_RIGHT_PERIOD){
 					count_l = 0;
                 	count_r = 0;
 					car_state=CAR_STATE_REST;
@@ -489,8 +496,8 @@ void parse_EPW_motor_dir(unsigned char DIR_cmd)
 				encoder_left_counter=0;
 				encoder_right_counter=0;
 				/*even stop function is  always zero , but for security, I also set speedvalue to zero.*/
-				pwm_value_left = 125;
-				pwm_value_right = 125;
+				pwm_value_left = base_pwm_l;
+				pwm_value_right = base_pwm_r;
 				proc_cmd("stop" , pwm_value_left , pwm_value_right);
 
 		}
@@ -619,7 +626,11 @@ float exponential(float ld){
 	return result;
 }
 
-void neural_update(neural_state_t *n_s, float rin, int encoder_counter){
+void neural_update(neural_state_t *n_s, float rin, int encoder_counter, int wheel_count){
+if (car_state != CAR_STATE_IDLE)
+{
+
+#if NEURAL_IDENTIFIER == 1
 	    int i = 0, j = 0;
 
         // 1. RBFNN Output
@@ -693,7 +704,7 @@ void neural_update(neural_state_t *n_s, float rin, int encoder_counter){
             n_s->yu = n_s->yu + tmp;
         }
         n_s->dyu = n_s->yu;
-
+#endif
         // 7. Update error
         n_s->rf_out = referenceModel2(rin, n_s->rf_out_1, n_s->rf_out_2);
         n_s->e = n_s->rf_out - (float)encoder_counter;
@@ -704,14 +715,15 @@ void neural_update(neural_state_t *n_s, float rin, int encoder_counter){
         n_s->xc[0] = n_s->e - n_s->e_1;
         n_s->xc[1] = n_s->e;
         n_s->xc[2] = n_s->e - (2 * n_s->e_1) + n_s->e_2; 
-
+#if NEURAL_IDENTIFIER == 1
         //int tmp_erbf = (int)(abs2(erbf)*100);
-        int tmp_erbf = (int)(n_s->erbf_avg * 100);
-        if ((tmp_erbf < 100) && (encoder_counter > 1))
+        int tmp_erbf = (wheel_count - n_s -> ynout_sum)/wheel_count;
+        tmp_erbf = tmp_erbf * 100; 
+        if (tmp_erbf < 10)
         {
-        	n_s->erbf_correct_times ++;
+        	n_s -> erbf_correct_times ++;
         }
-        if ((tmp_erbf < 100) && (encoder_counter > 1) && (n_s->erbf_correct_times >20)){
+        if ((tmp_erbf < 10) && (encoder_counter > 1) && (n_s->erbf_correct_times >30)){
         	n_s->erbf_correct_times ++;
 	        float kp_add = n_s->eta * n_s->e;
 	        kp_add = kp_add * n_s->dyu;
@@ -747,7 +759,7 @@ void neural_update(neural_state_t *n_s, float rin, int encoder_counter){
 	        	n_s->kd = n_s->ki_1;
 	        }		       
 	    }
-
+#endif
         // 11. Calculate the output of PID controller
         n_s->du = n_s->kp * n_s->xc[0] + n_s->ki * n_s->xc[1] + n_s->kd * n_s->xc[2];
         n_s->u = n_s->u_1 + n_s->du;
@@ -757,20 +769,22 @@ void neural_update(neural_state_t *n_s, float rin, int encoder_counter){
         }else if(n_s->u > 110) {
         	n_s->u = 110;
         }
-
+#if NEURAL_IDENTIFIER == 1
         // 12. update yout(k-1) u(k-1)
         n_s->yout_1 = n_s->x[1];
         n_s->u_2 = n_s->u_1;
         n_s->u_1 = n_s->u;
-
+#endif
         // 13. update e(k-1) e(k-2)
         n_s->e_2 = n_s->e_1;
         n_s->e_1 = n_s->e;
-
+#if NEURAL_IDENTIFIER == 1
         // 14. update input of RBFNN
         n_s->x[0] = n_s->du;
         n_s->x[1] = (float)encoder_counter;
         n_s->x[2] = n_s->yout_1;
+#endif
+    }
 }
 
 void neural_task(void *p)
@@ -782,49 +796,44 @@ void neural_task(void *p)
 		detachInterrupt(EXTI_Line3); /*close external interrupt 3*/ 
 
 	    if(car_state == CAR_STATE_MOVE_FORWARD){
-	    	rin = move_distance;
 	    	getMotorData();
-		    
-		    float err = ((float)(encoder_right_counter_1 - encoder_left_counter_1));
+	    	float err = 0;
+    		rin = move_distance;
+    		err = ((float)(encoder_left_counter_1 - encoder_right_counter_1));
+	    	err_sum += err;
 
-			if ((count_l - count_r) < 0)
-			{
-				neural_update(&n_r, rin - err, encoder_right_counter_1);
-			    neural_update(&n_l, rin, encoder_left_counter_1);
-			}else{
-				neural_update(&n_r, rin, encoder_right_counter_1);
-			    neural_update(&n_l, rin + err, encoder_left_counter_1);
-			}
+			neural_update(&n_r, rin, encoder_right_counter_1, count_r);
+		    neural_update(&n_l, rin + err, encoder_left_counter_1, count_l);
 
 		    float input_l =  n_l.u_1;
 		    float input_r =  n_r.u_1;
 
-	        proc_cmd("forward", 125+(int)input_l, 125+(int)input_r);
+	        proc_cmd("forward", base_pwm_l+(int)input_l, base_pwm_r+(int)input_r);
 
 	    }
 	    else if (car_state == CAR_STATE_MOVE_LEFT){
 	    	rin = 3;
 	    	getMotorData();
 
-	    	neural_update(&n_r, rin, encoder_right_counter_1);
-		    neural_update(&n_l, rin, encoder_left_counter_1);
+	    	neural_update(&n_r, rin, encoder_right_counter_1, count_l);
+		    neural_update(&n_l, rin, encoder_left_counter_1, count_r);
 
 		    float input_l =  n_l.u_1;
 		    float input_r =  n_r.u_1;
 
-	        proc_cmd("forward", 125-(int)input_l, 125+(int)input_r);
+	        proc_cmd("forward", base_pwm_l-(int)input_l, base_pwm_r+(int)input_r);
 	    }
 	    else if (car_state == CAR_STATE_MOVE_RIGHT){
 	    	rin = 3;
 	    	getMotorData();
 
-	    	neural_update(&n_r, rin, encoder_right_counter_1);
-		    neural_update(&n_l, rin, encoder_left_counter_1);
+	    	neural_update(&n_r, rin, encoder_right_counter_1, count_l);
+		    neural_update(&n_l, rin, encoder_left_counter_1, count_r);
 
 		    float input_l =  n_l.u_1;
 		    float input_r =  n_r.u_1;
 
-	        proc_cmd("forward", 125+(int)input_l, 125-(int)input_r);
+	        proc_cmd("forward", base_pwm_l+(int)input_l, base_pwm_r-(int)input_r);
 	    }
 
 	    else{
@@ -833,13 +842,13 @@ void neural_task(void *p)
 	    	count_r = 0;
 	    	getMotorData();
 
-		    neural_update(&n_r, rin, encoder_right_counter_1);
-		    neural_update(&n_l, rin, encoder_left_counter_1);
+		    //neural_update(&n_r, rin, encoder_right_counter_1, count_r);
+		    //neural_update(&n_l, rin, encoder_left_counter_1, count_l);
 
-		    float input_l =  n_l.u_1;
-		    float input_r =  n_r.u_1;
+		    //float input_l =  n_l.u_1;
+		    //float input_r =  n_r.u_1;
 
-	        proc_cmd("forward", 125+(int)input_l, 125+(int)input_r);
+	        proc_cmd("forward", base_pwm_l, base_pwm_r);
 	    }
 
 	    attachInterrupt(EXTI_Line0); 
