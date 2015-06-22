@@ -14,8 +14,9 @@
 
 int encoder_left_counter_1;
 int encoder_right_counter_1;
+int differential_counter = 0;
 
-float move_distance = 20.0;
+float move_distance = 15.0;
 
 neural_state_t n_r;
 neural_state_t n_l;
@@ -200,13 +201,13 @@ void init_Neural(neural_state_t *n_s){
 
 	// PID parameter
 	n_s->kp = 1;
-	n_s->ki = 30;
-	n_s->kd = 0.7;
+	n_s->ki = 60;
+	n_s->kd = 2;
 
 	// PID parameter of last cycle
 	n_s->kp_1 = 1;
-	n_s->ki_1 = 30;
-	n_s->kd_1 = 0.7;
+	n_s->ki_1 = 60;
+	n_s->kd_1 = 2;
 
 	// dy/du = jacobian
 	n_s->yu = 0;
@@ -403,11 +404,27 @@ void Car_State_Polling(){
 		if(car_state==CAR_STATE_IDLE){
 			proc_cmd("stop" , 125 , 125);
 				count=0;
+				differential_counter = 0;
+				count_l = 0;
+            	count_r = 0;
+				car_state=CAR_STATE_REST;
+				neural_reset(&n_r);
+				neural_reset(&n_l);
+        		encoder_right_counter_1 = 0;
+        		encoder_left_counter_1 = 0;
 		}
 		else if(car_state==CAR_STATE_REST){
 				proc_cmd("stop" , 125 , 125);
 
 				count++;
+				differential_counter = 0;
+				count_l = 0;
+            	count_r = 0;
+				car_state=CAR_STATE_REST;
+				neural_reset(&n_r);
+				neural_reset(&n_l);
+        		encoder_right_counter_1 = 0;
+        		encoder_left_counter_1 = 0;
 				if(count>=CAR_REST_PERIOD){
 						count=0;
 						car_state=CAR_STATE_IDLE;
@@ -415,9 +432,10 @@ void Car_State_Polling(){
 		}
 		else if(car_state==CAR_STATE_MOVE_FORWARD){
                 count++;
+                //differential_counter = 0;
 
 				//int pwm_value_right = 150;
-				//int 																																																																																																																																																																																																																																																																																																								``	pwm_value_left = (int)PID_Inc_Calc(&PID_Motor_L , rpm_right_motor, rpm_left_motor);
+				//int pwm_value_left = (int)PID_Inc_Calc(&PID_Motor_L , rpm_right_motor, rpm_left_motor);
                                 
                 if (count_r >= MOVE_PERIOD)  //2000 == 4 cycle
                 {
@@ -555,7 +573,7 @@ int motor_speed_convert_to_pwm(int motor_dir, int speed_value){
     /*pwm value accept range is 0~255*/
     if(pwm_value <=0) pwm_value = 0;
     else if (pwm_value >=255) pwm_value = 255;
-    return pwm_value; ;
+    return pwm_value;
 }
 
 
@@ -790,10 +808,16 @@ void neural_task(void *p)
 	    	rin = move_distance;
 	    	getMotorData();
 		    
-		    float err = ((float)(encoder_right_counter_1 - encoder_left_counter_1)/2.0);
-		    
-		    neural_update(&n_r, rin - err, encoder_right_counter_1);
-		    neural_update(&n_l, rin + err, encoder_left_counter_1);
+		    float err = ((float)(encoder_right_counter_1 - encoder_left_counter_1));
+
+			if ((count_l - count_r) < 0)
+			{
+				neural_update(&n_r, rin - err, encoder_right_counter_1);
+			    neural_update(&n_l, rin, encoder_left_counter_1);
+			}else{
+				neural_update(&n_r, rin, encoder_right_counter_1);
+			    neural_update(&n_l, rin + err, encoder_left_counter_1);
+			}
 
 		    float input_l =  n_l.u_1;
 		    float input_r =  n_r.u_1;
