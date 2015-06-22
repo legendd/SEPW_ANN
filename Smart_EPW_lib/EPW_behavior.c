@@ -404,38 +404,16 @@ void Car_State_Polling(){
 		if(car_state==CAR_STATE_IDLE){
 			proc_cmd("stop" , 125 , 125);
 				count=0;
-				differential_counter = 0;
-				count_l = 0;
-            	count_r = 0;
-				car_state=CAR_STATE_REST;
-				neural_reset(&n_r);
-				neural_reset(&n_l);
-        		encoder_right_counter_1 = 0;
-        		encoder_left_counter_1 = 0;
 		}
 		else if(car_state==CAR_STATE_REST){
 				proc_cmd("stop" , 125 , 125);
 
-				count++;
-				differential_counter = 0;
-				count_l = 0;
-            	count_r = 0;
-				car_state=CAR_STATE_REST;
-				neural_reset(&n_r);
-				neural_reset(&n_l);
-        		encoder_right_counter_1 = 0;
-        		encoder_left_counter_1 = 0;
 				if(count>=CAR_REST_PERIOD){
 						count=0;
 						car_state=CAR_STATE_IDLE;
 				}
 		}
 		else if(car_state==CAR_STATE_MOVE_FORWARD){
-                count++;
-                //differential_counter = 0;
-
-				//int pwm_value_right = 150;
-				//int pwm_value_left = (int)PID_Inc_Calc(&PID_Motor_L , rpm_right_motor, rpm_left_motor);
                                 
                 if (count_r >= MOVE_PERIOD)  //2000 == 4 cycle
                 {
@@ -460,7 +438,6 @@ void Car_State_Polling(){
 		}	
 		else if(car_state==CAR_STATE_MOVE_BACK){
                 
-				count++;
 				if(count>=CAR_MOVING_PERIOD){
 						count=0;
 						car_state=CAR_STATE_REST;
