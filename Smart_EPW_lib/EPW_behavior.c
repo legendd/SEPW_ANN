@@ -497,22 +497,30 @@ void Car_State_Polling(){
 void parse_EPW_motor_dir(unsigned char DIR_cmd)
 {
 		if(DIR_cmd == 'f'){
-			if (data_sending != 1)
+			if (data_sending != 1 && car_state == CAR_STATE_IDLE)
 			{
 				car_state = CAR_STATE_MOVE_FORWARD;
 			}
 		}
 		else if(DIR_cmd == 's'){
+			if(car_state == CAR_STATE_IDLE){
 				car_state = CAR_STATE_IDLE;
+			}
 		}
 		else if(DIR_cmd == 'b'){
+			if(car_state == CAR_STATE_IDLE){
                 car_state = CAR_STATE_MOVE_BACK;
+            }
 		}
         else if(DIR_cmd == 'l'){
+        	if(car_state == CAR_STATE_IDLE){
                 car_state = CAR_STATE_MOVE_LEFT;
+            }
 		}
         else if(DIR_cmd == 'r'){
+        	if(car_state == CAR_STATE_IDLE){
                 car_state = CAR_STATE_MOVE_RIGHT;
+            }
 		}
 		else{
 		}
