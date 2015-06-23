@@ -505,9 +505,7 @@ void parse_EPW_motor_dir(unsigned char DIR_cmd)
 			}
 		}
 		else if(DIR_cmd == 's'){
-			if(car_state == CAR_STATE_IDLE){
 				car_state = CAR_STATE_IDLE;
-			}
 		}
 		else if(DIR_cmd == 'b'){
 			if(car_state == CAR_STATE_IDLE){
