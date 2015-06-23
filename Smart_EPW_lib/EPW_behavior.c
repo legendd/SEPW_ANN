@@ -9,6 +9,7 @@
 #include "clib.h"
 #include "EPW_command.h"
 #include "PID.h"
+#include "linear_actuator.h"
 
 #define B_phase 1
 #define NEURAL_IDENTIFIER 1
@@ -377,6 +378,7 @@ void init_car(){
         init_motor_CWCCW();
         init_encoder();
 		init_External_Interrupt();
+		init_linear_actuator();
 		init_Neural(&n_r, 10.0, 50.0, 3.0);
 		init_Neural(&n_l, 10.0, 50.0, 3.0);
 		init_Neural(&n_r_back, 10.0, 50.0, 3.0);
@@ -528,6 +530,7 @@ void parse_EPW_motor_dir(unsigned char DIR_cmd)
 
 void PerformCommand(unsigned char group,unsigned char control_id, unsigned char value)
 {
+	static int actuator_pwm_value = 0;
    if(group == OUT_EPW_CMD){ /*0*/
 		switch ( control_id )
 		{
@@ -536,16 +539,15 @@ void PerformCommand(unsigned char group,unsigned char control_id, unsigned char 
 		        break;
 		    case EPW_MOTOR_PWM:
 		        motor_speed_value = value; /*0~10 scale*/
-                
 		        break;
 		    case EPW_ACTUATOR_A :
-		        set_linearActuator_A_cmd(value , 255); /*the actuator of pwm_value is fixed, value is dir flag.*/
+		        set_linearActuator_A_cmd(value , actuator_pwm_value); /*the actuator of pwm_value is fixed, value is dir flag.*/
 		        break;
 		    case EPW_ACTUATOR_B :                
-		        set_linearActuator_B_cmd(value , 255); /*the actuator of pwm_value is fixed. value is dir flag.*/
+		        set_linearActuator_B_cmd(value , actuator_pwm_value); /*the actuator of pwm_value is fixed. value is dir flag.*/
 		        break;
 		    default:
-		        ;
+		        break;
 		}
    }
 }
