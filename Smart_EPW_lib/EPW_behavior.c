@@ -24,6 +24,12 @@ float move_distance = 15.0;
 
 neural_state_t n_r;
 neural_state_t n_l;
+neural_state_t n_r_back;
+neural_state_t n_l_back;
+neural_state_t n_r_left;
+neural_state_t n_l_left;
+neural_state_t n_r_right;
+neural_state_t n_l_right;
 int err_sum = 0;
 
 // input command
@@ -366,8 +372,14 @@ void init_car(){
         init_motor_CWCCW();
         init_encoder();
 		init_External_Interrupt();
-		init_Neural(&n_r, 1, 50, 1);
-		init_Neural(&n_l, 1.5, 50, 1);
+		init_Neural(&n_r, 10.0, 50.0, 3.0);
+		init_Neural(&n_l, 10.0, 50.0, 3.0);
+		init_Neural(&n_r_back, 10.0, 50.0, 3.0);
+		init_Neural(&n_l_back, 10.0, 50.0, 3.0);
+		init_Neural(&n_r_left, 10.0, 50.0, 3.0);
+		init_Neural(&n_l_left, 10.0, 50.0, 3.0);
+		init_Neural(&n_r_right, 10.0, 50.0, 3.0);
+		init_Neural(&n_l_right, 10.0, 50.0, 3.0);
 
 		//printf("Neuron Number = %d", neuralNumber);
 		//printf("distance = %d\n", move_distance);
@@ -400,7 +412,7 @@ void init_car(){
  *  then the car moving will be keep 200(10*20) ms time.
  */
 #define CAR_MOVING_PERIOD 250 
-#define CAR_REST_PERIOD  5
+#define CAR_REST_PERIOD  2
 void Car_State_Polling(){
 		getMotorData();
 		static int count=0;
@@ -408,14 +420,15 @@ void Car_State_Polling(){
         
 		if(car_state==CAR_STATE_IDLE){
 			proc_cmd("stop" , base_pwm_l, base_pwm_r);
-				count=0;
+			count=0;
 		}
 		else if(car_state==CAR_STATE_REST){
-				proc_cmd("stop" , base_pwm_l, base_pwm_r);
+				//proc_cmd("stop" , base_pwm_l, base_pwm_r);
 
 				if(count>=CAR_REST_PERIOD){
-						count=0;
-						car_state=CAR_STATE_IDLE;
+					count=0;
+					car_state=CAR_STATE_IDLE;
+					proc_cmd("stop" , base_pwm_l, base_pwm_r);
 				}
 		}
 		else if(car_state==CAR_STATE_MOVE_FORWARD){
@@ -424,14 +437,11 @@ void Car_State_Polling(){
             {
 				printf("y_r=%d yn_r=%d \n", (int) count_r, (int)n_r.ynout_sum);
 				printf("y_l=%d yn_l=%d \n", (int) count_l, (int)n_l.ynout_sum);
-				printf("erbf_avg_r %d \n", (int)n_r.erbf_avg);
-				printf("erbf_avg_l %d \n", (int)n_l.erbf_avg);
 				printf("erbf_correct_times %d \n", (int)n_r.erbf_correct_times);
 				printf("erbf_correct_times %d \n", (int)n_l.erbf_correct_times);
-				//printf("%d %d %d\n", xc[0], xc[1], xc[2]);
 			    printf("PID R %d %d %d \n", (int)(n_r.kp*100), (int)(n_r.ki*100), (int)(n_r.kd*100));
 			    printf("PID L %d %d %d \n", (int)(n_l.kp*100), (int)(n_l.ki*100), (int)(n_l.kd*100));
-			    printf("err_sum = %d \n", err_sum);
+			    printf("2 wheels diff = %d \n", err_sum);
             	count_l = 0;
             	count_r = 0;
 				car_state=CAR_STATE_REST;
@@ -445,10 +455,27 @@ void Car_State_Polling(){
 		}	
 		else if(car_state==CAR_STATE_MOVE_BACK){
                 
-				if(count>=CAR_MOVING_PERIOD){
-						count=0;
-						car_state=CAR_STATE_REST;
-				}
+			if (count_r >= MOVE_BACK_PERIOD || count_l >= MOVE_BACK_PERIOD)  //2000 == 4 cycle
+            {
+				printf("y_r=%d yn_r=%d \n", (int) count_r, (int)n_r_back.ynout_sum);
+				printf("y_l=%d yn_l=%d \n", (int) count_l, (int)n_l_back.ynout_sum);
+				printf("erbf_avg_r %d \n", (int)n_r_back.erbf_avg);
+				printf("erbf_avg_l %d \n", (int)n_l_back.erbf_avg);
+				printf("erbf_correct_times %d \n", (int)n_r_back.erbf_correct_times);
+				printf("erbf_correct_times %d \n", (int)n_l_back.erbf_correct_times);
+				//printf("%d %d %d\n", xc[0], xc[1], xc[2]);
+			    printf("PID R %d %d %d \n", (int)(n_r_back.kp*100), (int)(n_r_back.ki*100), (int)(n_r_back.kd*100));
+			    printf("PID L %d %d %d \n", (int)(n_l_back.kp*100), (int)(n_l_back.ki*100), (int)(n_l_back.kd*100));
+			    printf("err_sum = %d \n", err_sum);
+            	count_l = 0;
+            	count_r = 0;
+				car_state=CAR_STATE_REST;
+				neural_reset(&n_r_back);
+				neural_reset(&n_l_back);
+        		encoder_right_counter_1 = 0;
+        		encoder_left_counter_1 = 0;
+        		err_sum = 0;
+            }
 		}
         else if(car_state==CAR_STATE_MOVE_LEFT){
                 if (count_r >= MOVE_LEFT_RIGHT_PERIOD || count_l >= MOVE_LEFT_RIGHT_PERIOD)  //2000 == 4 cycle
@@ -456,8 +483,8 @@ void Car_State_Polling(){
                 	count_l = 0;
                 	count_r = 0;
 					car_state=CAR_STATE_REST;
-					neural_reset(&n_r);
-					neural_reset(&n_l);
+					neural_reset(&n_r_left);
+					neural_reset(&n_l_left);
 	        		encoder_right_counter_1 = 0;
 	        		encoder_left_counter_1 = 0;
                 }
@@ -467,8 +494,8 @@ void Car_State_Polling(){
 					count_l = 0;
                 	count_r = 0;
 					car_state=CAR_STATE_REST;
-					neural_reset(&n_r);
-					neural_reset(&n_l);
+					neural_reset(&n_r_right);
+					neural_reset(&n_l_right);
 	        		encoder_right_counter_1 = 0;
 	        		encoder_left_counter_1 = 0;
     		    }
@@ -629,7 +656,6 @@ float exponential(float ld){
 void neural_update(neural_state_t *n_s, float rin, int encoder_counter, int wheel_count){
 if (car_state != CAR_STATE_IDLE)
 {
-
 #if NEURAL_IDENTIFIER == 1
 	    int i = 0, j = 0;
 
@@ -706,11 +732,14 @@ if (car_state != CAR_STATE_IDLE)
         n_s->dyu = n_s->yu;
 #endif
         // 7. Update error
+#if RF == 0
+        n_s->e = rin - (float)encoder_counter;
+#else
         n_s->rf_out = referenceModel2(rin, n_s->rf_out_1, n_s->rf_out_2);
         n_s->e = n_s->rf_out - (float)encoder_counter;
         n_s->rf_out_2 = n_s->rf_out_1;
         n_s->rf_out_1 = n_s->rf_out;
-
+#endif
         // 8. Incremental PID
         n_s->xc[0] = n_s->e - n_s->e_1;
         n_s->xc[1] = n_s->e;
@@ -812,42 +841,68 @@ void neural_task(void *p)
 
 	    }
 	    else if (car_state == CAR_STATE_MOVE_LEFT){
-	    	rin = 3;
+	    	rin = move_distance;
 	    	getMotorData();
 
-	    	neural_update(&n_r, rin, encoder_right_counter_1, count_l);
-		    neural_update(&n_l, rin, encoder_left_counter_1, count_r);
+	    	neural_update(&n_r_left, rin, encoder_right_counter_1, count_l);
+		    neural_update(&n_l_left, rin, encoder_left_counter_1, count_r);
 
-		    float input_l =  n_l.u_1;
-		    float input_r =  n_r.u_1;
+		    float input_l =  n_l_left.u_1;
+		    float input_r =  n_r_left.u_1;
 
 	        proc_cmd("forward", base_pwm_l-(int)input_l, base_pwm_r+(int)input_r);
 	    }
 	    else if (car_state == CAR_STATE_MOVE_RIGHT){
-	    	rin = 3;
+	    	rin = move_distance;
 	    	getMotorData();
 
-	    	neural_update(&n_r, rin, encoder_right_counter_1, count_l);
-		    neural_update(&n_l, rin, encoder_left_counter_1, count_r);
+	    	neural_update(&n_r_right, rin, encoder_right_counter_1, count_l);
+		    neural_update(&n_l_right, rin, encoder_left_counter_1, count_r);
 
-		    float input_l =  n_l.u_1;
-		    float input_r =  n_r.u_1;
+		    float input_l =  n_l_right.u_1;
+		    float input_r =  n_r_right.u_1;
 
 	        proc_cmd("forward", base_pwm_l+(int)input_l, base_pwm_r-(int)input_r);
 	    }
+	    else if (car_state == CAR_STATE_MOVE_BACK)
+	    {
+	    	rin = move_distance;
+	    	getMotorData();
+	    	float err = 0;
+    		rin = move_distance;
+    		err = ((float)(encoder_left_counter_1 - encoder_right_counter_1));
+	    	err_sum += err;
 
-	    else{
+
+		    neural_update(&n_r_back, rin + err, encoder_right_counter_1, count_r);
+		    neural_update(&n_l_back, rin, encoder_left_counter_1, count_l);
+
+		    float input_l =  n_l_back.u_1;
+		    float input_r =  n_r_back.u_1;
+
+	        proc_cmd("forward", base_pwm_l - input_l, base_pwm_r - input_r);
+	    }
+	    else if (car_state == CAR_STATE_REST)
+	    {
 	    	rin = 0.0;
 	    	count_l = 0;
 	    	count_r = 0;
 	    	getMotorData();
 
-		    //neural_update(&n_r, rin, encoder_right_counter_1, count_r);
-		    //neural_update(&n_l, rin, encoder_left_counter_1, count_l);
+//		    neural_update(&n_r, rin, encoder_right_counter_1, count_r);
+//		    neural_update(&n_l, rin, encoder_left_counter_1, count_l);
 
-		    //float input_l =  n_l.u_1;
-		    //float input_r =  n_r.u_1;
+//		    float input_l =  n_l.u_1;
+//		    float input_r =  n_r.u_1;
 
+	        proc_cmd("forward", base_pwm_l, base_pwm_r);
+	    }
+	    // for idle state
+	    else{
+	    	rin = 0.0;
+	    	count_l = 0;
+	    	count_r = 0;
+	    	getMotorData();
 	        proc_cmd("forward", base_pwm_l, base_pwm_r);
 	    }
 
