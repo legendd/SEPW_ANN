@@ -12,6 +12,7 @@
 
 #define B_phase 1
 #define NEURAL_IDENTIFIER 1
+#define RECORD_SIZE 250
 
 int encoder_left_counter_1;
 int encoder_right_counter_1;
@@ -19,6 +20,18 @@ int differential_counter = 0;
 int first_control = 0;
 int base_pwm_l = 120;
 int base_pwm_r = 120;
+
+int path_record_r_p[RECORD_SIZE];  // path record for plant
+int path_record_l_p[RECORD_SIZE];  // path record for plant
+int path_record_r_n[RECORD_SIZE];  // path record for neural identifier
+int path_record_l_n[RECORD_SIZE];  // path record for neural identifier
+int kp_record_l[RECORD_SIZE];
+int kp_record_r[RECORD_SIZE];
+int ki_record_l[RECORD_SIZE];
+int ki_record_r[RECORD_SIZE];
+int kd_record_r[RECORD_SIZE];
+int kd_record_l[RECORD_SIZE];
+int path_counter = 0;    // path_record_p[path_counter]
 
 float move_distance = 15.0;
 
@@ -373,6 +386,18 @@ void init_car(){
 		init_Neural(&n_r_right, 10.0, 50.0, 3.0);
 		init_Neural(&n_l_right, 10.0, 50.0, 3.0);
 
+		array_1d_Init_2(RECORD_SIZE, 0, path_record_r_p);
+		array_1d_Init_2(RECORD_SIZE, 0, path_record_l_p);
+		array_1d_Init_2(RECORD_SIZE, 0, path_record_r_n);
+		array_1d_Init_2(RECORD_SIZE, 0, path_record_l_n);
+		array_1d_Init_2(RECORD_SIZE, 0, kp_record_l);
+		array_1d_Init_2(RECORD_SIZE, 0, kp_record_r);
+		array_1d_Init_2(RECORD_SIZE, 0, ki_record_l);
+		array_1d_Init_2(RECORD_SIZE, 0, ki_record_r);
+		array_1d_Init_2(RECORD_SIZE, 0, kd_record_l);
+		array_1d_Init_2(RECORD_SIZE, 0, kd_record_r);
+		path_counter = 0;
+
 		printf("initial Kp = %d, Ki = %d, Kd = %d",  (int)(n_r.kp*100), (int)(n_r.ki*100), (int)(n_r.kd*100));
 		printf("learning speed = %d\n", (int)(n_r.eta*100));
 
@@ -421,11 +446,12 @@ void Car_State_Polling(){
                             
             if (count_r >= MOVE_PERIOD || count_l >= MOVE_PERIOD)  //2000 == 4 cycle
             {
-				printf("y_r=%d yn_r=%d \n", (int) count_r, (int)n_r.ynout_sum);
-				printf("y_l=%d yn_l=%d \n", (int) count_l, (int)n_l.ynout_sum);
-				printf("PID R %d %d %d \n", (int)(n_r.kp*100), (int)(n_r.ki*100), (int)(n_r.kd*100));
-			    printf("PID L %d %d %d \n", (int)(n_l.kp*100), (int)(n_l.ki*100), (int)(n_l.kd*100));
-			    printf("2 wheels diff = %d \n", err_sum);
+				//printf("plant_sum_r %d neural_sum_r %d\n", (int) count_r, (int)n_r.ynout_sum);
+				//printf("plant_sum_l %d neural_sum_l %d\n", (int) count_l, (int)n_l.ynout_sum);
+				//printf("2_wheels_diff = %d \n", err_sum);
+				//printf("PID*100 R kp %d ki %d kd %d\n", (int)(n_r.kp*100), (int)(n_r.ki*100), (int)(n_r.kd*100));
+			    //printf("PID*100 L kp %d ki %d kd %d\n", (int)(n_l.kp*100), (int)(n_l.ki*100), (int)(n_l.kd*100));
+
             	count_l = 0;
             	count_r = 0;
 				car_state=CAR_STATE_REST;
@@ -434,6 +460,24 @@ void Car_State_Polling(){
         		encoder_right_counter_1 = 0;
         		encoder_left_counter_1 = 0;
         		err_sum = 0;
+        		
+        		//printf("plant_l plant_r neural_l neural_r %d\n");
+        		int tmp_counter = 0;
+        		for (tmp_counter = 0; tmp_counter < path_counter+3; ++tmp_counter)
+        		{
+        			printf("%d %d %d %d %d %d %d %d %d %d\n", path_record_l_p[tmp_counter], path_record_r_p[tmp_counter], path_record_l_n[tmp_counter], path_record_r_n[tmp_counter], kp_record_l[tmp_counter], kp_record_r[tmp_counter], ki_record_l[tmp_counter], ki_record_r[tmp_counter], kd_record_l[tmp_counter], kd_record_r[tmp_counter]);
+        		}
+        		array_1d_Init_2(RECORD_SIZE, 0, path_record_r_p);
+        		array_1d_Init_2(RECORD_SIZE, 0, path_record_l_p);
+        		array_1d_Init_2(RECORD_SIZE, 0, path_record_r_n);
+        		array_1d_Init_2(RECORD_SIZE, 0, path_record_l_n);
+        		array_1d_Init_2(RECORD_SIZE, 0, kp_record_l);
+				array_1d_Init_2(RECORD_SIZE, 0, kp_record_r);
+				array_1d_Init_2(RECORD_SIZE, 0, ki_record_l);
+				array_1d_Init_2(RECORD_SIZE, 0, ki_record_r);
+				array_1d_Init_2(RECORD_SIZE, 0, kd_record_l);
+				array_1d_Init_2(RECORD_SIZE, 0, kd_record_r);
+        		path_counter = 0;
             }
 				
 		}	
@@ -494,26 +538,26 @@ void parse_EPW_motor_dir(unsigned char DIR_cmd)
 {
 		if(DIR_cmd == 'f'){
 				car_state = CAR_STATE_MOVE_FORWARD;
+//				printf("forward\n");
 		}
 		else if(DIR_cmd == 's'){
 				car_state = CAR_STATE_IDLE;
-				//proc_cmd("stop" , pwm_value_left , pwm_value_right);
-
+//				printf("stop\n");
 		}
 		else if(DIR_cmd == 'b'){
                 car_state = CAR_STATE_MOVE_BACK;
-				//proc_cmd("backward" , pwm_value_left , pwm_value_right);
+//				printf("back\n");
 		}
         else if(DIR_cmd == 'l'){
                 car_state = CAR_STATE_MOVE_LEFT;
-				//proc_cmd("left" , pwm_value_left , pwm_value_right);
+//				printf("left\n");
 		}
         else if(DIR_cmd == 'r'){
                 car_state = CAR_STATE_MOVE_RIGHT;
-				//proc_cmd("right" , pwm_value_left , pwm_value_right);
+//				printf("right\n");
 		}
 		else{
-				/*do not anything*/
+				/*do nothing*/
 		}
 }
 
@@ -762,6 +806,18 @@ void neural_task(void *p)
 
 			neural_update(&n_r, rin, encoder_right_counter_1, count_r);
 		    neural_update(&n_l, rin + err, encoder_left_counter_1, count_l);
+
+		    path_record_r_p[path_counter] = count_r; 
+	    	path_record_l_p[path_counter] = count_l;
+	    	path_record_r_n[path_counter] = (int)n_r.ynout_sum;
+	    	path_record_l_n[path_counter] = (int)n_l.ynout_sum;
+			kp_record_l[path_counter] = (int)(n_l.kp * 100);
+			kp_record_r[path_counter] = (int)(n_r.kp * 100);
+			ki_record_l[path_counter] = (int)(n_l.ki);
+			ki_record_r[path_counter] = (int)(n_r.ki);
+			kd_record_r[path_counter] = (int)(n_l.kd * 100);
+			kd_record_l[path_counter] = (int)(n_r.kd * 100);
+	    	path_counter++;
 
 		    float input_l =  n_l.u_1;
 		    float input_r =  n_r.u_1;
