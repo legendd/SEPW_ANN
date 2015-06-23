@@ -398,9 +398,6 @@ void init_car(){
 		array_1d_Init_2(RECORD_SIZE, 0, kd_record_r);
 		path_counter = 0;
 
-		printf("initial Kp = %d, Ki = %d, Kd = %d",  (int)(n_r.kp*100), (int)(n_r.ki*100), (int)(n_r.kd*100));
-		printf("learning speed = %d\n", (int)(n_r.eta*100));
-
 		carTimers = xTimerCreate("Car_State_Polling",	 ( CAR_POLLING_PERIOD), pdTRUE, ( void * ) 1,  Car_State_Polling );
 		xTimerStart( carTimers, 0 );
 
@@ -453,11 +450,6 @@ void Car_State_Polling(){
                 
 			if (count_r >= MOVE_BACK_PERIOD || count_l >= MOVE_BACK_PERIOD)  //2000 == 4 cycle
             {
-				printf("y_r=%d yn_r=%d \n", (int) count_r, (int)n_r_back.ynout_sum);
-				printf("y_l=%d yn_l=%d \n", (int) count_l, (int)n_l_back.ynout_sum);
-			    printf("PID R %d %d %d \n", (int)(n_r_back.kp*100), (int)(n_r_back.ki*100), (int)(n_r_back.kd*100));
-			    printf("PID L %d %d %d \n", (int)(n_l_back.kp*100), (int)(n_l_back.ki*100), (int)(n_l_back.kd*100));
-			    printf("2 wheels diff = %d \n", err_sum);
             	count_l = 0;
             	count_r = 0;
 				car_state=CAR_STATE_IDLE;
@@ -509,26 +501,20 @@ void parse_EPW_motor_dir(unsigned char DIR_cmd)
 			{
 				car_state = CAR_STATE_MOVE_FORWARD;
 			}
-//				printf("forward\n");
 		}
 		else if(DIR_cmd == 's'){
 				car_state = CAR_STATE_IDLE;
-//				printf("stop\n");
 		}
 		else if(DIR_cmd == 'b'){
                 car_state = CAR_STATE_MOVE_BACK;
-//				printf("back\n");
 		}
         else if(DIR_cmd == 'l'){
                 car_state = CAR_STATE_MOVE_LEFT;
-//				printf("left\n");
 		}
         else if(DIR_cmd == 'r'){
                 car_state = CAR_STATE_MOVE_RIGHT;
-//				printf("right\n");
 		}
 		else{
-				/*do nothing*/
 		}
 }
 
