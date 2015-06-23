@@ -38,12 +38,12 @@
 #define ENCODER_RIGHT_PHASE_B_PIN                                 GPIO_Pin_3
 /*===============end of define  the all by pins========================*/
 
-#define CAR_POLLING_PERIOD  100//unit : ms
+#define CAR_POLLING_PERIOD  200//unit : ms
 #define SHOW_DATA_PERIOD  2000
 #define GET_MOTOR_PERIOD   50
 #define MOVE_PERIOD 2000
 #define MOVE_BACK_PERIOD 400
-#define MOVE_LEFT_RIGHT_PERIOD 60
+#define MOVE_LEFT_RIGHT_PERIOD 40
 #define DIFFERENTIAL_CHANGE_PERIOD 30
 
 #define MOTOR_CW 0

@@ -256,13 +256,8 @@ void neural_reset(neural_state_t *n_s){
 	n_s->e = 0;
 	n_s->e_1 = 0;
 	n_s->e_2 = 0;
-//	n_s->erbf = 0;
 	n_s->erbf_correct_times = 0;
-//	n_s->ynout = 0;
 	n_s->ynout_sum = 0;
-//	n_s->u_1 = 0;
-//	n_s->u = 0;
-//	n_s->du = 0;
 }
 
 /*============================================================================*/
@@ -305,7 +300,6 @@ void init_External_Interrupt(void){
 
 		RCC_APB2PeriphClockCmd(RCC_APB2Periph_SYSCFG, ENABLE);
 
-#if 1
 		/* Connect EXTI Line0 to PA0 pin */
 		SYSCFG_EXTILineConfig(EXTI_PortSourceGPIOA,EXTI_PinSource0);
 		EXTI_InitStruct.EXTI_Line = EXTI_Line0;
@@ -320,8 +314,6 @@ void init_External_Interrupt(void){
 		NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
 		NVIC_Init(&NVIC_InitStructure);
 
-
-
 		/* Connect EXTI Line1 to PA1 pin */
 		SYSCFG_EXTILineConfig(EXTI_PortSourceGPIOA,EXTI_PinSource1);
 		EXTI_InitStruct.EXTI_Line = EXTI_Line1;
@@ -335,7 +327,7 @@ void init_External_Interrupt(void){
 		NVIC_InitStructure.NVIC_IRQChannelSubPriority = 3;
 		NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE;
 		NVIC_Init(&NVIC_InitStructure);
-#endif
+
 		/* Connect EXTI Line2 to PA2 pin */
 		SYSCFG_EXTILineConfig(EXTI_PortSourceGPIOA,EXTI_PinSource2);
 		EXTI_InitStruct.EXTI_Line = EXTI_Line2;
@@ -381,18 +373,12 @@ void init_car(){
 		init_Neural(&n_r_right, 10.0, 50.0, 3.0);
 		init_Neural(&n_l_right, 10.0, 50.0, 3.0);
 
-		//printf("Neuron Number = %d", neuralNumber);
-		//printf("distance = %d\n", move_distance);
-		//rintf("Neural task delay period = %d\n", NEURAL_PERIOD);
 		printf("initial Kp = %d, Ki = %d, Kd = %d",  (int)(n_r.kp*100), (int)(n_r.ki*100), (int)(n_r.kd*100));
-		//printf("Move period = %d\n", MOVE_PERIOD);
 		printf("learning speed = %d\n", (int)(n_r.eta*100));
 
 		carTimers = xTimerCreate("Car_State_Polling",	 ( CAR_POLLING_PERIOD), pdTRUE, ( void * ) 1,  Car_State_Polling );
 		xTimerStart( carTimers, 0 );
 
-//		Show_data_Timers = xTimerCreate("Show_data_Polling",( SHOW_DATA_PERIOD), pdTRUE, ( void * ) 1,  Show_data_Polling );
-//		xTimerStart( Show_data_Timers, 0 );
 }
 
 
@@ -437,9 +423,7 @@ void Car_State_Polling(){
             {
 				printf("y_r=%d yn_r=%d \n", (int) count_r, (int)n_r.ynout_sum);
 				printf("y_l=%d yn_l=%d \n", (int) count_l, (int)n_l.ynout_sum);
-				printf("erbf_correct_times %d \n", (int)n_r.erbf_correct_times);
-				printf("erbf_correct_times %d \n", (int)n_l.erbf_correct_times);
-			    printf("PID R %d %d %d \n", (int)(n_r.kp*100), (int)(n_r.ki*100), (int)(n_r.kd*100));
+				printf("PID R %d %d %d \n", (int)(n_r.kp*100), (int)(n_r.ki*100), (int)(n_r.kd*100));
 			    printf("PID L %d %d %d \n", (int)(n_l.kp*100), (int)(n_l.ki*100), (int)(n_l.kd*100));
 			    printf("2 wheels diff = %d \n", err_sum);
             	count_l = 0;
@@ -459,14 +443,9 @@ void Car_State_Polling(){
             {
 				printf("y_r=%d yn_r=%d \n", (int) count_r, (int)n_r_back.ynout_sum);
 				printf("y_l=%d yn_l=%d \n", (int) count_l, (int)n_l_back.ynout_sum);
-				printf("erbf_avg_r %d \n", (int)n_r_back.erbf_avg);
-				printf("erbf_avg_l %d \n", (int)n_l_back.erbf_avg);
-				printf("erbf_correct_times %d \n", (int)n_r_back.erbf_correct_times);
-				printf("erbf_correct_times %d \n", (int)n_l_back.erbf_correct_times);
-				//printf("%d %d %d\n", xc[0], xc[1], xc[2]);
 			    printf("PID R %d %d %d \n", (int)(n_r_back.kp*100), (int)(n_r_back.ki*100), (int)(n_r_back.kd*100));
 			    printf("PID L %d %d %d \n", (int)(n_l_back.kp*100), (int)(n_l_back.ki*100), (int)(n_l_back.kd*100));
-			    printf("err_sum = %d \n", err_sum);
+			    printf("2 wheels diff = %d \n", err_sum);
             	count_l = 0;
             	count_r = 0;
 				car_state=CAR_STATE_REST;
@@ -515,78 +494,28 @@ void parse_EPW_motor_dir(unsigned char DIR_cmd)
 {
 		if(DIR_cmd == 'f'){
 				car_state = CAR_STATE_MOVE_FORWARD;
-				encoder_left_counter=0;
-				encoder_right_counter=0;
 		}
 		else if(DIR_cmd == 's'){
 				car_state = CAR_STATE_IDLE;
-				encoder_left_counter=0;
-				encoder_right_counter=0;
-				/*even stop function is  always zero , but for security, I also set speedvalue to zero.*/
-				pwm_value_left = base_pwm_l;
-				pwm_value_right = base_pwm_r;
-				proc_cmd("stop" , pwm_value_left , pwm_value_right);
+				//proc_cmd("stop" , pwm_value_left , pwm_value_right);
 
 		}
 		else if(DIR_cmd == 'b'){
                 car_state = CAR_STATE_MOVE_BACK;
-				encoder_left_counter=0;
-				encoder_right_counter=0;
-				pwm_value_left = motor_speed_convert_to_pwm(MOTOR_CCW, motor_speed_value); 
-				pwm_value_right=pwm_value_left;
-				proc_cmd("backward" , pwm_value_left , pwm_value_right);
+				//proc_cmd("backward" , pwm_value_left , pwm_value_right);
 		}
         else if(DIR_cmd == 'l'){
                 car_state = CAR_STATE_MOVE_LEFT;
-				encoder_left_counter=0;
-				encoder_right_counter=0;
-				pwm_value_left = motor_speed_convert_to_pwm(MOTOR_CCW, motor_speed_value); 
-				pwm_value_right= motor_speed_convert_to_pwm(MOTOR_CW, motor_speed_value); 
-				proc_cmd("left" , pwm_value_left , pwm_value_right);
+				//proc_cmd("left" , pwm_value_left , pwm_value_right);
 		}
         else if(DIR_cmd == 'r'){
                 car_state = CAR_STATE_MOVE_RIGHT;
-				encoder_left_counter=0;
-				encoder_right_counter=0;
-				pwm_value_left = motor_speed_convert_to_pwm(MOTOR_CW, motor_speed_value); 
-				pwm_value_right=motor_speed_convert_to_pwm(MOTOR_CCW, motor_speed_value);
-				proc_cmd("right" , pwm_value_left , pwm_value_right);
+				//proc_cmd("right" , pwm_value_left , pwm_value_right);
 		}
 		else{
 				/*do not anything*/
 		}
 }
-
-
-/*============================================================================*/
-/*============================================================================*
- ** function : motor_speed_convert_to_pwm
- ** brief : convert the motor speed value to pwm value based on motor driver.
- **         motor speed value range is 1~10,
- **         convert the pwm value by 
- **           CW : 146~222 
- **           CCW : 32~108 
- **         1 speed value convert to 8 pwm scale.
- ** param : motor_dir, speed_value
- ** retval : pwm value
- **============================================================================*/
-/*============================================================================*/
-int motor_speed_convert_to_pwm(int motor_dir, int speed_value){
-    static int pwm_value;
-    switch(motor_dir){
-        case MOTOR_CW: /*pwm range: 146~222*/
-            pwm_value = 146 + speed_value*8;
-            break;
-        case MOTOR_CCW: /*pwm range: 32~108*/
-            pwm_value = 108 - speed_value*8;
-            break;
-    }
-    /*pwm value accept range is 0~255*/
-    if(pwm_value <=0) pwm_value = 0;
-    else if (pwm_value >=255) pwm_value = 255;
-    return pwm_value;
-}
-
 
 void PerformCommand(unsigned char group,unsigned char control_id, unsigned char value)
 {
@@ -889,12 +818,6 @@ void neural_task(void *p)
 	    	count_r = 0;
 	    	getMotorData();
 
-//		    neural_update(&n_r, rin, encoder_right_counter_1, count_r);
-//		    neural_update(&n_l, rin, encoder_left_counter_1, count_l);
-
-//		    float input_l =  n_l.u_1;
-//		    float input_r =  n_r.u_1;
-
 	        proc_cmd("forward", base_pwm_l, base_pwm_r);
 	    }
 	    // for idle state
@@ -912,39 +835,6 @@ void neural_task(void *p)
 		attachInterrupt(EXTI_Line3);
 	    vTaskDelay(NEURAL_PERIOD);
 	}
-}
-void Show_data_Polling(void)
-{
-//	printf("r %d \n", (int) encoder_right_counter_1);
-//	printf("l %d \n", (int) encoder_left_counter_1);
-//	printf("l : %d r : %d\n", count_l, count_r);
-	//int tmp_erbf = (erbf*100); 
-	//tmp_erbf = tmp_erbf / encoder_right_counter_1;
-	//tmp_erbf = tmp_erbf*100;
-	//printf("fff\n");
-//	printf("erbf = %d ", (int)erbf);
-//	printf("yn = %d ", (int)ynout);
-	printf("r %d %d %d \n", (int) encoder_right_counter_1, (int)n_r.ynout, (int)n_r.erbf);
-	printf("l %d %d %d\n", (int) encoder_left_counter_1, (int)n_l.ynout, (int)n_l.erbf);
-//	printf("erbf %d \n", (int)n_r.erbf_avg);
-//	printf("erbf %d \n", (int)n_l.erbf_avg);
-	//printf("%d %d %d\n", xc[0], xc[1], xc[2]);
-    printf("R %d %d %d \n", (int)(n_r.kp*100), (int)(n_r.ki*100), (int)(n_r.kd*100));
-    printf("L %d %d %d \n", (int)(n_l.kp*100), (int)(n_l.ki*100), (int)(n_l.kd*100));
-//    printf("c * 100 = %d \n", (int)(c[0][0]*100));
- //   printf("db * 100 = %d \n", (int)(db[0]*100));
-   // printf("dw * 100 = %d \n", (int)(dw[0]*100));
- //   printf("du * 100 = %d \n", (int)(du*100));	        
-    //printf("100 * u_1 = %d\n", (int)(u_1 * 100));
-//	printf("erbf=%d\n", (int)(erbf*100));
-	      
-	//printf(" left encoder : %d \n", count_l);
-	//printf(" right encoder : %d \n", count_r);
-}
-
-void Get_Motor_Polling (void)
-{
-	getMotorData();
 }
 
 void getMotorData(void)
