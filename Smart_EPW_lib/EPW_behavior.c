@@ -868,8 +868,6 @@ void neural_task(void *p)
 void getMotorData(void)
 {
     /*for SmartEPW is used by 500 pulse/rev */
-    //rpm_left_motor=(float)encoder_left_counter;// * 3.0f;//60.0f / 1000.0f / 0.02f;
-    //rpm_right_motor=(float)encoder_right_counter;// * 3.0f;// 60.0f  / 1000.0f / 0.02f;
     encoder_right_counter_1 = encoder_right_counter;
     encoder_left_counter_1 = encoder_left_counter;
 
