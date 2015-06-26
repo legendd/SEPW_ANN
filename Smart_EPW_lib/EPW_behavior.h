@@ -41,7 +41,7 @@
 #define CAR_POLLING_PERIOD  200//unit : ms
 #define SHOW_DATA_PERIOD  2000
 #define GET_MOTOR_PERIOD   50
-#define MOVE_PERIOD 2000
+#define MOVE_PERIOD 4000
 #define MOVE_BACK_PERIOD 400
 #define MOVE_LEFT_RIGHT_PERIOD 40
 #define DIFFERENTIAL_CHANGE_PERIOD 30
@@ -53,7 +53,7 @@
 #define ts 0.001
 #define neuralNumber  6
 #define centerNumber  3
-#define RF 1
+#define RF 0
 #define NEURAL_PERIOD 20
 
 extern void attachInterrupt(uint32_t EXTI_LineX);
@@ -127,6 +127,10 @@ typedef struct _neural_state_t {
 	float xc[centerNumber];
 
 	float norm_c_2[neuralNumber];
+
+	float total_err;
+	float total_err_1;
+	int stop_tune;
 } neural_state_t;
 
 #endif /* __CAR_BEHAVIOR_H__ */
