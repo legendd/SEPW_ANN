@@ -225,7 +225,7 @@ void init_Neural(neural_state_t *n_s, float KP, float KI, float KD){
     array_2d_Copy(centerNumber, neuralNumber, n_s->c, n_s->c_1);
 	
 	// learning speed
-	n_s->eta = 0.05;
+	n_s->eta = 0.01;
 
 	// PID parameter
 	n_s->kp = KP;
@@ -513,7 +513,7 @@ void parse_EPW_motor_dir(unsigned char DIR_cmd)
 			if (data_sending != 1 && car_state == CAR_STATE_IDLE)
 			{
 				car_state = CAR_STATE_MOVE_FORWARD;
-				if ( n_r.total_err < 1300.0)
+				if ( n_r.total_err < 200.0)
 		    	{
 		    		n_r.stop_tune = 1;
 		    		printf("R STOP\n");
