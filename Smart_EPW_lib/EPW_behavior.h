@@ -131,6 +131,7 @@ typedef struct _neural_state_t {
 	float total_err;
 	float total_err_1;
 	int stop_tune;
+	int desire;
 } neural_state_t;
 
 #endif /* __CAR_BEHAVIOR_H__ */
