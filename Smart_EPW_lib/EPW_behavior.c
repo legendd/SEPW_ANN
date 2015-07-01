@@ -24,7 +24,9 @@ int base_pwm_l = 120;
 int base_pwm_r = 120;
 int data_sending = 0;
 int first_train = 0;
+int stopping = 0;
 float end_tune_condition = 5;
+int err_ratio = 10;
 
 int path_record_r_p[RECORD_SIZE];  // path record for plant
 int path_record_l_p[RECORD_SIZE];  // path record for plant
@@ -37,6 +39,8 @@ int ki_record_r[RECORD_SIZE];
 int kd_record_r[RECORD_SIZE];
 int kd_record_l[RECORD_SIZE];
 int desire_record[RECORD_SIZE];
+int c_out_l[RECORD_SIZE];
+int c_out_r[RECORD_SIZE];
 int path_counter = 0;    // path_record_p[path_counter]
 
 float move_distance = 10.0;
@@ -92,7 +96,7 @@ void array_2d_Copy(int size_x, int size_y, float array1[][size_y], float array2[
 }
 
 float referenceModel(float rin, float rf_out_1){
-	return ((9 * rin + 100 * rf_out_1) / 109);
+	return ((9 * rin + 1000 * rf_out_1) / 1009);
 }
 
 float referenceModel2(float rin, float rf_out_1, float rf_out_2){
@@ -265,7 +269,7 @@ void init_Neural(neural_state_t *n_s, float KP, float KI, float KD){
 
 	n_s->erbf_avg = 0;
 	n_s->total_err = 2000;
-	n_s->total_err = 12000;
+	n_s->total_err_1 = 12000;
 }
 
 void neural_reset(neural_state_t *n_s){
@@ -280,9 +284,9 @@ void neural_reset(neural_state_t *n_s){
 	n_s->rf_out = 0;
    	n_s->rf_out_1 = 0;
 	n_s->rf_out_2 = 0;
-	//n_s->u = 0;
-	//n_s->u_1 = 0;
-	//n_s->u_2 = 0;
+	n_s->u = 0;
+	n_s->u_1 = 0;
+	n_s->u_2 = 0;
 }
 
 /*============================================================================*/
@@ -404,6 +408,8 @@ void init_car(){
 		array_1d_Init_2(RECORD_SIZE, 0, kd_record_l);
 		array_1d_Init_2(RECORD_SIZE, 0, kd_record_r);
 		array_1d_Init_2(RECORD_SIZE, 0, desire_record);
+		array_1d_Init_2(RECORD_SIZE, 0, c_out_r);
+		array_1d_Init_2(RECORD_SIZE, 0, c_out_l);
 		path_counter = 0;
 
 		carTimers = xTimerCreate("Car_State_Polling",	 ( CAR_POLLING_PERIOD), pdTRUE, ( void * ) 1,  Car_State_Polling );
@@ -435,23 +441,28 @@ void Car_State_Polling(){
         unsigned int distance[4];
         
 		if(car_state==CAR_STATE_IDLE){
-        	count_l = 0;
-        	count_r = 0;
+        	if (stopping != 1)
+        	{
+	        	count_l = 0;
+        		count_r = 0;
+        	}
+
 			count=0;
 		}
 		else if(car_state==CAR_STATE_MOVE_FORWARD){
                             
             if (count_r >= MOVE_PERIOD)  //2000 == 4 cycle
             {
-            	count_l = 0;
-            	count_r = 0;
+            	//count_l = 0;
+            	//count_r = 0;
 				car_state=CAR_STATE_IDLE;
-				neural_reset(&n_r);
-				neural_reset(&n_l);
-        		encoder_right_counter_1 = 0;
-        		encoder_left_counter_1 = 0;
+				//neural_reset(&n_r);
+				//neural_reset(&n_l);
+        		//encoder_right_counter_1 = 0;
+        		//encoder_left_counter_1 = 0;
         		err_sum = 0;
-        		data_sending = 1;
+        		stopping = 1;
+        		//data_sending = 1;
             }
 				
 		}	
@@ -508,25 +519,35 @@ void parse_EPW_motor_dir(unsigned char DIR_cmd)
 		if(DIR_cmd == 'f'){
 			if (data_sending != 1 && car_state == CAR_STATE_IDLE)
 			{
+				n_r.u_1 = n_r.forward_u_1;
+				n_r.u_2 = n_r.forward_u_2;
+				n_r.u = n_r.forward_u;
+				n_l.u_1 = n_l.forward_u_1;
+				n_l.u_2 = n_l.forward_u_2;
+				n_l.u = n_l.forward_u;
+
 				car_state = CAR_STATE_MOVE_FORWARD;
-				if ( n_r.total_err < 800.0)
+				err_ratio = (int) n_r.total_err_1;
+				//err_ratio = err_ratio/n_r.total_err_1;
+				if (err_ratio < 700 && err_ratio > -700)
 		    	{
 		    		n_r.stop_tune = 1;
 		    	}else{
 		    		//n_r.stop_tune = 0;
 		    	}
-		    	n_r.total_err_1 = n_r.total_err;
-		    	n_r.total_err = 0;
-		    	n_r.desire = 0;
-
-		    	if ( n_l.total_err < 800.0)
+		    	//n_r.total_err_1 = n_r.total_err;
+		    	//n_r.total_err = 0;
+		    	//n_r.desire = 0;
+		    	err_ratio = (int) n_l.total_err_1;
+		    	//err_ratio = err_ratio/n_l.total_err_1;
+		    	if (err_ratio < 700 && err_ratio > -700)
 		    	{
 		    		n_l.stop_tune = 1;
 		    	}else{
 		    		//n_l.stop_tune = 0;
 		    	}
-	    		n_l.total_err_1 = n_l.total_err;
-	    		n_l.total_err = 0;
+	    		//n_l.total_err_1 = n_l.total_err;
+	    		//n_l.total_err = 0;
 			}
 		}
 		else if(DIR_cmd == 's'){
@@ -536,6 +557,12 @@ void parse_EPW_motor_dir(unsigned char DIR_cmd)
 		}
 		else if(DIR_cmd == 'b'){
 			if(car_state == CAR_STATE_IDLE){
+				n_r.u_1 = n_r.forward_u_1;
+				n_r.u_2 = n_r.forward_u_2;
+				n_r.u = n_r.forward_u;
+				n_l.u_1 = n_l.forward_u_1;
+				n_l.u_2 = n_l.forward_u_2;
+				n_l.u = n_l.forward_u;
 				count_l = 0;
 				count_r = 0;
                 car_state = CAR_STATE_MOVE_BACK;
@@ -543,6 +570,12 @@ void parse_EPW_motor_dir(unsigned char DIR_cmd)
 		}
         else if(DIR_cmd == 'l'){
         	if(car_state == CAR_STATE_IDLE){
+        		n_r.u_1 = n_r.forward_u_1;
+				n_r.u_2 = n_r.forward_u_2;
+				n_r.u = n_r.forward_u;
+				n_l.u_1 = n_l.forward_u_1;
+				n_l.u_2 = n_l.forward_u_2;
+				n_l.u = n_l.forward_u;
         		count_l = 0;
 				count_r = 0;
                 car_state = CAR_STATE_MOVE_LEFT;
@@ -550,6 +583,12 @@ void parse_EPW_motor_dir(unsigned char DIR_cmd)
 		}
         else if(DIR_cmd == 'r'){
         	if(car_state == CAR_STATE_IDLE){
+        		n_r.u_1 = n_r.forward_u_1;
+				n_r.u_2 = n_r.forward_u_2;
+				n_r.u = n_r.forward_u;
+				n_l.u_1 = n_l.forward_u_1;
+				n_l.u_2 = n_l.forward_u_2;
+				n_l.u = n_l.forward_u;
         		count_l = 0;
 				count_r = 0;
                 car_state = CAR_STATE_MOVE_RIGHT;
@@ -627,7 +666,6 @@ float exponential(float ld){
 void neural_update(neural_state_t *n_s, float rin, int encoder_counter, int wheel_count){
 if (car_state != CAR_STATE_IDLE)
 {
-#if NEURAL_IDENTIFIER == 1
 	    int i = 0, j = 0;
 
         // 1. RBFNN Output
@@ -702,27 +740,15 @@ if (car_state != CAR_STATE_IDLE)
             n_s->yu = n_s->yu + tmp;
         }
         n_s->dyu = n_s->yu;
-#endif
-        // 7. Update error
-        //n_s->rf_out = referenceModel2(rin, n_s->rf_out_1, n_s->rf_out_2);
- 		
-		/*n_s->e = 10 - (float)encoder_counter;
 
-        //if (encoder_counter > 0)
-        //{
-        	if (n_s->total_err == 0)
-        	{
-        		n_s->rf_out_1 = 0;
-        		n_s->rf_out_2 = 0;
-        	}*/
-        	n_s->rf_out = referenceModel(rin, n_s->rf_out_1);
- 	       	n_s->e = n_s->rf_out - (float)encoder_counter;
- 	       	n_s->total_err += abs2(n_s->e);
-    	    n_s->rf_out_2 = n_s->rf_out_1;
-       		n_s->rf_out_1 = n_s->rf_out;
-	        n_s->desire = n_s->desire +(int)n_s->rf_out;
-        //}
-
+        // 6.2 Calculate the error with reference model
+    	n_s->rf_out = referenceModel(rin, n_s->rf_out_1);
+       	n_s->e = n_s->rf_out - (float)encoder_counter;
+       	n_s->total_err += abs2(n_s->e);
+	    n_s->rf_out_2 = n_s->rf_out_1;
+   		n_s->rf_out_1 = n_s->rf_out;
+        n_s->desire = n_s->desire +(int)n_s->rf_out;
+        
         // 8. Incremental PID
         n_s->xc[0] = n_s->e - n_s->e_1;
         n_s->xc[1] = n_s->e;
@@ -802,24 +828,12 @@ if (car_state != CAR_STATE_IDLE)
 }
 
 void neural_update2(neural_state_t *n_s, float rin, int encoder_counter, int wheel_count){
-//if (car_state != CAR_STATE_IDLE)
-//{
-	/*n_s->e = 7 - (float)encoder_counter;
 
-    if (encoder_counter > 0)
-    {
-    	if (n_s->total_err == 0)
-    	{
-    		n_s->rf_out_1 = 0;
-    		n_s->rf_out_2 = 0;
-    	}*/
-    	n_s->rf_out = referenceModel(rin, n_s->rf_out_1);
-       	n_s->e = n_s->rf_out - (float)encoder_counter;
-       	//n_s->total_err += abs2(n_s->e);
-	    n_s->rf_out_2 = n_s->rf_out_1;
-   		n_s->rf_out_1 = n_s->rf_out;
-        //n_s->desire = n_s->desire +(int)n_s->rf_out;
-    //}
+	n_s->rf_out = referenceModel(rin, n_s->rf_out_1);
+   	n_s->e = n_s->rf_out - (float)encoder_counter;
+    n_s->rf_out_2 = n_s->rf_out_1;
+	n_s->rf_out_1 = n_s->rf_out;
+    n_s->desire = n_s->desire +(int)n_s->rf_out;
 
     // 8. Incremental PID
     n_s->xc[0] = n_s->e - n_s->e_1;
@@ -845,7 +859,6 @@ void neural_update2(neural_state_t *n_s, float rin, int encoder_counter, int whe
     n_s->e_2 = n_s->e_1;
     n_s->e_1 = n_s->e;
 
-//	}
 }
 
 void send_data_task(void *p){
@@ -853,9 +866,9 @@ void send_data_task(void *p){
 		if (data_sending == 1)
 		{
 		    int tmp_counter = 0;
-    		for (tmp_counter = path_counter-2; tmp_counter < path_counter; ++tmp_counter)
+    		for (tmp_counter = 0; tmp_counter < path_counter; ++tmp_counter)
     		{
-    			printf("%d %d %d %d %d %d %d %d %d %d %d %d %d\n", desire_record[tmp_counter], path_record_l_p[tmp_counter], path_record_l_p[tmp_counter]-path_record_l_p[tmp_counter-1], path_record_r_p[tmp_counter], path_record_r_p[tmp_counter]-path_record_r_p[tmp_counter-1],path_record_l_n[tmp_counter], path_record_r_n[tmp_counter], kp_record_l[tmp_counter], kp_record_r[tmp_counter], ki_record_l[tmp_counter], ki_record_r[tmp_counter], kd_record_l[tmp_counter], kd_record_r[tmp_counter]);
+    			printf("%d %d %d %d %d %d %d %d %d %d %d %d %d %d %d\n", desire_record[tmp_counter], path_record_l_p[tmp_counter], path_record_l_p[tmp_counter]-path_record_l_p[tmp_counter-1], path_record_r_p[tmp_counter], path_record_r_p[tmp_counter]-path_record_r_p[tmp_counter-1],path_record_l_n[tmp_counter], path_record_r_n[tmp_counter], kp_record_l[tmp_counter], kp_record_r[tmp_counter], ki_record_l[tmp_counter], ki_record_r[tmp_counter], kd_record_l[tmp_counter], kd_record_r[tmp_counter], c_out_l[tmp_counter], c_out_r[tmp_counter]);
     		}
     		printf("total e r r & total e r r 1 R : %d %d\n", (int)n_r.total_err, (int)n_r.total_err_1);
     		printf("total e r r & total e r r 1 L : %d %d\n", (int)n_l.total_err, (int)n_l.total_err_1);
@@ -867,6 +880,7 @@ void send_data_task(void *p){
     		{
     			printf("stop l\n");
     		}
+    		printf("e r r _ r a t i o * 1 0 0 = %d\n", (err_ratio));
     		array_1d_Init_2(RECORD_SIZE, 0, path_record_r_p);
     		array_1d_Init_2(RECORD_SIZE, 0, path_record_l_p);
     		array_1d_Init_2(RECORD_SIZE, 0, path_record_r_n);
@@ -878,6 +892,14 @@ void send_data_task(void *p){
 			array_1d_Init_2(RECORD_SIZE, 0, kd_record_l);
 			array_1d_Init_2(RECORD_SIZE, 0, kd_record_r);
 			array_1d_Init_2(RECORD_SIZE, 0, desire_record);
+			array_1d_Init_2(RECORD_SIZE, 0, c_out_l);
+			array_1d_Init_2(RECORD_SIZE, 0, c_out_r);
+			n_r.total_err_1 = n_r.total_err;
+    		n_r.total_err = 0;
+    		n_r.desire = 0;
+    		n_l.total_err_1 = n_l.total_err;
+    		n_l.total_err = 0;
+    		n_l.desire = 0;
 			path_counter = 0;
 			data_sending = 0;
 		}
@@ -897,7 +919,6 @@ void neural_task(void *p)
 	    	getMotorData();
 	    	float err = 0;
     		rin = move_distance;
-//    		err = ((float)(encoder_left_counter_1 - encoder_right_counter_1)/2.0);
 	    	err_sum += err;
 
 	    	neural_update(&n_r, rin, encoder_right_counter_1, count_r);
@@ -916,6 +937,8 @@ void neural_task(void *p)
 				kd_record_r[path_counter] = (int)(n_l.kd * 100);
 				kd_record_l[path_counter] = (int)(n_r.kd * 100);
 				desire_record[path_counter] = n_r.desire;
+				c_out_l[path_counter] = (int)n_l.u_1;
+				c_out_r[path_counter] = (int)n_r.u_1;
 		    	path_counter++;
 	    	}
 
@@ -926,7 +949,7 @@ void neural_task(void *p)
 
 	    }
 	    else if (car_state == CAR_STATE_MOVE_LEFT){
-	    	rin = 3;
+	    	rin = 8;
 	    	getMotorData();
 
 	    	neural_update2(&n_r, rin, encoder_right_counter_1, count_r);
@@ -938,7 +961,7 @@ void neural_task(void *p)
 	        proc_cmd("forward", base_pwm_l-(int)input_l, base_pwm_r+(int)input_r);
 	    }
 	    else if (car_state == CAR_STATE_MOVE_RIGHT){
-	    	rin = 3;
+	    	rin = 8;
 	    	getMotorData();
 
 	    	neural_update2(&n_r, rin, encoder_right_counter_1, count_r);
@@ -953,8 +976,7 @@ void neural_task(void *p)
 	    {
 	    	getMotorData();
 	    	float err = 0;
-    		rin = 3;
-    		err = ((float)(encoder_left_counter_1 - encoder_right_counter_1));
+    		rin = 8;
 	    	err_sum += err;
 
 		    neural_update2(&n_r, rin, encoder_right_counter_1, count_r);
@@ -964,35 +986,63 @@ void neural_task(void *p)
 		    float input_r =  n_r.u_1;
 
 	        proc_cmd("forward", base_pwm_l - input_l, base_pwm_r - input_r);
-	    }// for idle state
-	    else{
+	    }
+	    else if (car_state == CAR_STATE_IDLE){
 	    	getMotorData();
-	    	float input_r, input_l;
-	    	if (encoder_left_counter_1 > 2)
+	    	float input_r = 0, input_l = 0;
+	    	if (stopping == 1)
 	    	{
-		    	rin = 0;
-		    	neural_update2(&n_l, rin, encoder_left_counter_1, count_l);
-			    input_l =  n_l.u_1;
+	    		if ((encoder_left_counter_1 > 1) && (encoder_right_counter_1 > 1))
+			    	{
+				    	rin = 0;
+				    	neural_update2(&n_l, rin, encoder_left_counter_1, count_l);
+					    neural_update2(&n_r, rin, encoder_right_counter_1, count_r);
+
+				    	if (path_counter < RECORD_SIZE)
+				    	{
+						    path_record_r_p[path_counter] = count_r; 
+					    	path_record_l_p[path_counter] = count_l;
+					    	path_record_r_n[path_counter] = (int)n_r.ynout_sum;
+					    	path_record_l_n[path_counter] = (int)n_l.ynout_sum;
+							kp_record_l[path_counter] = (int)(n_l.kp * 10000);
+							kp_record_r[path_counter] = (int)(n_r.kp * 10000);
+							ki_record_l[path_counter] = (int)(n_l.ki * 10000);
+							ki_record_r[path_counter] = (int)(n_r.ki * 10000);
+							kd_record_r[path_counter] = (int)(n_l.kd * 100);
+							kd_record_l[path_counter] = (int)(n_r.kd * 100);
+							desire_record[path_counter] = n_r.desire;
+							c_out_l[path_counter] = (int)n_l.u_1;
+							c_out_r[path_counter] = (int)n_r.u_1;
+					    	path_counter++;
+				    	}
+
+					    input_r =  n_r.u_1;
+					    input_l =  n_l.u_1;
+			    	}else{
+			    		n_r.forward_u_1 = n_r.u_1;
+			    		n_r.forward_u_2 = n_r.u_2;
+			    		n_r.forward_u = n_r.u;
+			    		n_l.forward_u_1 = n_l.u_1;
+			    		n_l.forward_u_2 = n_l.u_2;
+			    		n_l.forward_u = n_l.u;
+			    		data_sending = 1;
+		    			stopping = 0;
+			    		
+			    		neural_reset(&n_r);
+						neural_reset(&n_l);
+			    		input_l = 0;
+			    		input_r = 0;
+			    	}
 	    	}else{
 	    		neural_reset(&n_r);
 				neural_reset(&n_l);
 	    		input_l = 0;
 	    		input_r = 0;
 	    	}
-
-	    	if (encoder_right_counter_1 > 2)
-	    	{
-	    		rin = 0;
-			    neural_update2(&n_r, rin, encoder_right_counter_1, count_r);
-			    input_r =  n_r.u_1;
-	    	}else{
-	    		neural_reset(&n_r);
-				neural_reset(&n_l);
-	    		input_r = 0;
-	    		input_l = 0;
-	    	}
-
+	    	
 	        proc_cmd("forward", base_pwm_l+(int)input_l, base_pwm_r+(int)input_r);
+	    }else{
+
 	    }
 
 	    attachInterrupt(EXTI_Line0); 

@@ -43,7 +43,7 @@
 #define GET_MOTOR_PERIOD   50
 #define MOVE_PERIOD 2000
 #define MOVE_BACK_PERIOD 400
-#define MOVE_LEFT_RIGHT_PERIOD 70
+#define MOVE_LEFT_RIGHT_PERIOD 60
 #define DIFFERENTIAL_CHANGE_PERIOD 30
 
 #define MOTOR_CW 0
@@ -100,6 +100,9 @@ typedef struct _neural_state_t {
 	float u;
 	float u_1;
 	float u_2;
+	float forward_u_1;  // use this to record the start value of PWM
+	float forward_u_2;
+	float forward_u;
 
 	float e_1;
 	float e_2;
