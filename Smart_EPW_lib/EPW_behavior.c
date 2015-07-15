@@ -866,12 +866,12 @@ void send_data_task(void *p){
 		if (data_sending == 1)
 		{
 		    int tmp_counter = 0;
-    		for (tmp_counter = 0; tmp_counter < path_counter; ++tmp_counter)
-    		{
-    			printf("%d %d %d %d %d %d %d %d %d %d %d %d %d %d %d\n", desire_record[tmp_counter], path_record_l_p[tmp_counter], path_record_l_p[tmp_counter]-path_record_l_p[tmp_counter-1], path_record_r_p[tmp_counter], path_record_r_p[tmp_counter]-path_record_r_p[tmp_counter-1],path_record_l_n[tmp_counter], path_record_r_n[tmp_counter], kp_record_l[tmp_counter], kp_record_r[tmp_counter], ki_record_l[tmp_counter], ki_record_r[tmp_counter], kd_record_l[tmp_counter], kd_record_r[tmp_counter], c_out_l[tmp_counter], c_out_r[tmp_counter]);
-    		}
-    		printf("total e r r & total e r r 1 R : %d %d\n", (int)n_r.total_err, (int)n_r.total_err_1);
-    		printf("total e r r & total e r r 1 L : %d %d\n", (int)n_l.total_err, (int)n_l.total_err_1);
+    		//for (tmp_counter = 0; tmp_counter < path_counter; ++tmp_counter)
+    		//{
+    			//printf("%d %d %d %d %d %d %d %d %d %d %d %d %d %d %d\n", desire_record[tmp_counter], path_record_l_p[tmp_counter], path_record_l_p[tmp_counter]-path_record_l_p[tmp_counter-1], path_record_r_p[tmp_counter], path_record_r_p[tmp_counter]-path_record_r_p[tmp_counter-1],path_record_l_n[tmp_counter], path_record_r_n[tmp_counter], kp_record_l[tmp_counter], kp_record_r[tmp_counter], ki_record_l[tmp_counter], ki_record_r[tmp_counter], kd_record_l[tmp_counter], kd_record_r[tmp_counter], c_out_l[tmp_counter], c_out_r[tmp_counter]);
+    		//}
+    		//printf("total e r r & total e r r 1 R : %d %d\n", (int)n_r.total_err, (int)n_r.total_err_1);
+    		//printf("total e r r & total e r r 1 L : %d %d\n", (int)n_l.total_err, (int)n_l.total_err_1);
     		if (n_r.stop_tune == 1)
     		{
     			printf("stop r\n");
