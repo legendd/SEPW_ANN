@@ -47,6 +47,8 @@ float move_distance = 10.0;
 
 neural_state_t n_r;
 neural_state_t n_l;
+neural_state_t n_r_back;
+neural_state_t n_l_back;
 int err_sum = 0;
 
 // input command
@@ -396,6 +398,8 @@ void init_car(){
 		init_linear_actuator();
 		init_Neural(&n_r, 0.01, 0.01, 0);
 		init_Neural(&n_l, 0.01, 0.01, 0);
+		init_Neural(&n_r_back, 0.01, 0.01, 0);
+		init_Neural(&n_l_back, 0.01, 0.01, 0);
 
 		array_1d_Init_2(RECORD_SIZE, 0, path_record_r_p);
 		array_1d_Init_2(RECORD_SIZE, 0, path_record_l_p);
@@ -453,16 +457,9 @@ void Car_State_Polling(){
                             
             if (count_r >= MOVE_PERIOD)  //2000 == 4 cycle
             {
-            	//count_l = 0;
-            	//count_r = 0;
 				car_state=CAR_STATE_IDLE;
-				//neural_reset(&n_r);
-				//neural_reset(&n_l);
-        		//encoder_right_counter_1 = 0;
-        		//encoder_left_counter_1 = 0;
         		err_sum = 0;
         		stopping = 1;
-        		//data_sending = 1;
             }
 				
 		}	
@@ -470,14 +467,9 @@ void Car_State_Polling(){
                 
 			if (count_r >= MOVE_BACK_PERIOD || count_l >= MOVE_BACK_PERIOD)  //2000 == 4 cycle
             {
-            	count_l = 0;
-            	count_r = 0;
-				car_state=CAR_STATE_IDLE;
-				neural_reset(&n_r);
-				neural_reset(&n_l);
-        		encoder_right_counter_1 = 0;
-        		encoder_left_counter_1 = 0;
+            	car_state=CAR_STATE_IDLE;
         		err_sum = 0;
+        		stopping = 2;
             }
 		}
         else if(car_state==CAR_STATE_MOVE_LEFT){
@@ -557,15 +549,28 @@ void parse_EPW_motor_dir(unsigned char DIR_cmd)
 		}
 		else if(DIR_cmd == 'b'){
 			if(car_state == CAR_STATE_IDLE){
-				n_r.u_1 = n_r.forward_u_1;
-				n_r.u_2 = n_r.forward_u_2;
-				n_r.u = n_r.forward_u;
-				n_l.u_1 = n_l.forward_u_1;
-				n_l.u_2 = n_l.forward_u_2;
-				n_l.u = n_l.forward_u;
+				n_r_back.u_1 = n_r_back.forward_u_1;
+				n_r_back.u_2 = n_r_back.forward_u_2;
+				n_r_back.u = n_r_back.forward_u;
+				n_l_back.u_1 = n_l_back.forward_u_1;
+				n_l_back.u_2 = n_l_back.forward_u_2;
+				n_l_back.u = n_l_back.forward_u;
 				count_l = 0;
 				count_r = 0;
                 car_state = CAR_STATE_MOVE_BACK;
+
+                err_ratio = (int) n_r_back.total_err_1;
+				if (err_ratio < 700 && err_ratio > -700)
+		    	{
+		    		n_r_back.stop_tune = 1;
+		    	}else{
+		    	}
+		    	err_ratio = (int) n_l_back.total_err_1;
+		    	if (err_ratio < 700 && err_ratio > -700)
+		    	{
+		    		n_l.stop_tune = 1;
+		    	}else{
+		    	}
             }
 		}
         else if(DIR_cmd == 'l'){
@@ -958,7 +963,7 @@ void neural_task(void *p)
 		    float input_l =  n_l.u_1;
 		    float input_r =  n_r.u_1;
 
-	        proc_cmd("forward", base_pwm_l-(int)input_l, base_pwm_r+(int)input_r);
+	        proc_cmd("left", base_pwm_l-(int)input_l, base_pwm_r+(int)input_r);
 	    }
 	    else if (car_state == CAR_STATE_MOVE_RIGHT){
 	    	rin = 8;
@@ -970,22 +975,22 @@ void neural_task(void *p)
 		    float input_l =  n_l.u_1;
 		    float input_r =  n_r.u_1;
 
-	        proc_cmd("forward", base_pwm_l+(int)input_l, base_pwm_r-(int)input_r);
+	        proc_cmd("right", base_pwm_l+(int)input_l, base_pwm_r-(int)input_r);
 	    }
 	    else if (car_state == CAR_STATE_MOVE_BACK)
 	    {
 	    	getMotorData();
 	    	float err = 0;
-    		rin = 8;
+    		rin = move_distance;
 	    	err_sum += err;
 
-		    neural_update2(&n_r, rin, encoder_right_counter_1, count_r);
-		    neural_update2(&n_l, rin, encoder_left_counter_1, count_l);
+	    	neural_update(&n_r_back, rin, encoder_right_counter_1, count_r);
+	    	neural_update(&n_l_back, rin, encoder_left_counter_1, count_l);
 
-		    float input_l =  n_l.u_1;
-		    float input_r =  n_r.u_1;
+		    float input_l =  n_l_back.u_1;
+		    float input_r =  n_r_back.u_1;
 
-	        proc_cmd("forward", base_pwm_l - input_l, base_pwm_r - input_r);
+	        proc_cmd("forward", base_pwm_l-(int)input_l, base_pwm_r-(int)input_r);
 	    }
 	    else if (car_state == CAR_STATE_IDLE){
 	    	getMotorData();
@@ -1033,9 +1038,53 @@ void neural_task(void *p)
 			    		input_l = 0;
 			    		input_r = 0;
 			    	}
-	    	}else{
-	    		neural_reset(&n_r);
-				neural_reset(&n_l);
+	    	}if (stopping == 2)
+	    	{
+	    		if ((encoder_left_counter_1 > 1) && (encoder_right_counter_1 > 1))
+			    	{
+				    	rin = 0;
+				    	neural_update2(&n_l_back, rin, encoder_left_counter_1, count_l);
+					    neural_update2(&n_r_back, rin, encoder_right_counter_1, count_r);
+
+				    	if (path_counter < RECORD_SIZE)
+				    	{
+						    path_record_r_p[path_counter] = count_r; 
+					    	path_record_l_p[path_counter] = count_l;
+					    	path_record_r_n[path_counter] = (int)n_r_back.ynout_sum;
+					    	path_record_l_n[path_counter] = (int)n_l_back.ynout_sum;
+							kp_record_l[path_counter] = (int)(n_l_back.kp * 10000);
+							kp_record_r[path_counter] = (int)(n_r_back.kp * 10000);
+							ki_record_l[path_counter] = (int)(n_l_back.ki * 10000);
+							ki_record_r[path_counter] = (int)(n_r_back.ki * 10000);
+							kd_record_r[path_counter] = (int)(n_l_back.kd * 100);
+							kd_record_l[path_counter] = (int)(n_r_back.kd * 100);
+							desire_record[path_counter] = n_r_back.desire;
+							c_out_l[path_counter] = (int)n_l_back.u_1;
+							c_out_r[path_counter] = (int)n_r_back.u_1;
+					    	path_counter++;
+				    	}
+
+					    input_r =  n_r_back.u_1;
+					    input_l =  n_l_back.u_1;
+			    	}else{
+			    		n_r_back.forward_u_1 = n_r_back.u_1;
+			    		n_r_back.forward_u_2 = n_r_back.u_2;
+			    		n_r_back.forward_u = n_r_back.u;
+			    		n_l_back.forward_u_1 = n_l_back.u_1;
+			    		n_l_back.forward_u_2 = n_l_back.u_2;
+			    		n_l_back.forward_u = n_l_back.u;
+			    		data_sending = 1;
+		    			stopping = 0;
+			    		
+			    		neural_reset(&n_r_back);
+						neural_reset(&n_l_back);
+			    		input_l = 0;
+			    		input_r = 0;
+			    	}
+	    	}
+	    	else{
+	    		neural_reset(&n_r_back);
+				neural_reset(&n_l_back);
 	    		input_l = 0;
 	    		input_r = 0;
 	    	}
