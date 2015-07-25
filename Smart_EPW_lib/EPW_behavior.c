@@ -49,6 +49,7 @@ neural_state_t n_r;
 neural_state_t n_l;
 neural_state_t n_r_back;
 neural_state_t n_l_back;
+int err_sum = 0;
 
 // input command
 float rin = 0.0f;
@@ -1018,7 +1019,7 @@ void neural_task(void *p)
 		    float input_l =  n_l_back.u;
 		    float input_r =  n_r.u;
 
-	        proc_cmd("forward", base_pwm_l-(int)input_l, base_pwm_r+(int)input_r);
+	        proc_cmd("left", base_pwm_l-(int)input_l, base_pwm_r+(int)input_r);
 	    }
 	    else if (car_state == CAR_STATE_MOVE_RIGHT){
 	    	rin = 5;
@@ -1042,11 +1043,10 @@ void neural_task(void *p)
 		    float input_l =  n_l.u;
 		    float input_r =  n_r_back.u;
 
-	        proc_cmd("forward", base_pwm_l+(int)input_l, base_pwm_r-(int)input_r);
+	        proc_cmd("right", base_pwm_l+(int)input_l, base_pwm_r-(int)input_r);
 	    }
 	    else if(car_state == CAR_STATE_STOPPING){
 	    	getMotorData();
-	    	
 	    	if (last_state == CAR_STATE_MOVE_FORWARD)
 	    	{
 	    		if ((speed_left_counter_1 > 2) && (speed_right_counter_1 > 2))
@@ -1134,6 +1134,7 @@ void neural_task(void *p)
 		    		proc_cmd("forward", base_pwm_l, base_pwm_r);
 		    		data_sending = 1;
 		    	}
+
 	    	}
 		    
 	    }
