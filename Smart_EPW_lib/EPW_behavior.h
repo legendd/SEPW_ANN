@@ -38,12 +38,12 @@
 #define ENCODER_RIGHT_PHASE_B_PIN                                 GPIO_Pin_3
 /*===============end of define  the all by pins========================*/
 
-#define CAR_POLLING_PERIOD  200//unit : ms
+#define CAR_POLLING_PERIOD  30//unit : ms
 #define SHOW_DATA_PERIOD  2000
 #define GET_MOTOR_PERIOD   50
 #define MOVE_PERIOD 3420   // 2000
 #define MOVE_BACK_PERIOD 3420      // 400
-#define MOVE_LEFT_RIGHT_PERIOD 322  // 2000
+#define MOVE_LEFT_RIGHT_PERIOD 150  // 2000
 #define DIFFERENTIAL_CHANGE_PERIOD 30
 
 #define MOTOR_CW 0
@@ -100,9 +100,9 @@ typedef struct _neural_state_t {
 	float u;
 	float u_1;
 	float u_2;
-	float forward_u_1;  // use this to record the start value of PWM
-	float forward_u_2;
-	float forward_u;
+	float u_1_base;  // use this to record the start value of PWM
+	float u_2_base;
+	float u_base;
 
 	float e_1;
 	float e_2;
