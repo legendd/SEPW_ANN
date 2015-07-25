@@ -274,7 +274,7 @@ void init_Neural(neural_state_t *n_s, float KP, float KI, float KD){
 	n_s->total_err_1 = 12000;
 }
 
-void neural_reset(neural_state_t *n_s){
+void controller_reset(neural_state_t *n_s){
 	n_s->xc[0] = 0;//e - e_1;
 	n_s->xc[1] = 0;
 	n_s->xc[2] = 0;//e - (2 * e_1) + e_2;
@@ -1062,8 +1062,8 @@ void neural_task(void *p)
 		    	else{
 					record_controller_base(&n_r);
 					record_controller_base(&n_l);
-		    		neural_reset(&n_r);
-					neural_reset(&n_l);
+		    		controller_reset(&n_r);
+					controller_reset(&n_l);
 					car_state = CAR_STATE_IDLE;
 		    		proc_cmd("forward", base_pwm_l, base_pwm_r);
 	    			data_sending = 1;
@@ -1084,8 +1084,8 @@ void neural_task(void *p)
 		    	else{
 		    		record_controller_base(&n_r_back);
 					record_controller_base(&n_l_back);
-		    		neural_reset(&n_r_back);
-					neural_reset(&n_l_back);
+		    		controller_reset(&n_r_back);
+					controller_reset(&n_l_back);
 					car_state = CAR_STATE_IDLE;
 		    		proc_cmd("forward", base_pwm_l, base_pwm_r);
 		    		data_sending = 1;
@@ -1106,8 +1106,8 @@ void neural_task(void *p)
 		    	else{
 		    		//record_controller_base(&n_r);
 					//record_controller_base(&n_l_back);
-		    		neural_reset(&n_r);
-					neural_reset(&n_l_back);
+		    		controller_reset(&n_r);
+					controller_reset(&n_l_back);
 					car_state = CAR_STATE_IDLE;
 		    		proc_cmd("forward", base_pwm_l, base_pwm_r);
 		    		data_sending = 1;
@@ -1128,8 +1128,8 @@ void neural_task(void *p)
 		    	else{
 		    		//record_controller_base(&n_r_back);
 					//record_controller_base(&n_l);
-		    		neural_reset(&n_r_back);
-					neural_reset(&n_l);
+		    		controller_reset(&n_r_back);
+					controller_reset(&n_l);
 					car_state = CAR_STATE_IDLE;
 		    		proc_cmd("forward", base_pwm_l, base_pwm_r);
 		    		data_sending = 1;
@@ -1173,6 +1173,8 @@ void EXTI0_IRQHandler(){
 				if(car_state==CAR_STATE_MOVE_LEFT){
 		            if (distance_right_counter >= MOVE_LEFT_RIGHT_PERIOD && distance_left_counter >= MOVE_LEFT_RIGHT_PERIOD)  //2000 == 4 cycle
 		            {
+		            	controller_reset(&n_r);
+						controller_reset(&n_l_back);
 						car_state = CAR_STATE_IDLE;
 			    		last_state = CAR_STATE_MOVE_LEFT;
 		            }
@@ -1180,6 +1182,8 @@ void EXTI0_IRQHandler(){
 		        else if(car_state==CAR_STATE_MOVE_RIGHT){
 		            if(distance_right_counter >= MOVE_LEFT_RIGHT_PERIOD &&  distance_left_counter >= MOVE_LEFT_RIGHT_PERIOD)
 		            {
+		            	controller_reset(&n_r_back);
+						controller_reset(&n_l);
 						car_state = CAR_STATE_IDLE;
 		    			last_state = CAR_STATE_MOVE_RIGHT;
 				    }
@@ -1196,6 +1200,8 @@ void EXTI1_IRQHandler(){
 			if(car_state==CAR_STATE_MOVE_LEFT){
 	            if (distance_right_counter >= MOVE_LEFT_RIGHT_PERIOD && distance_left_counter >= MOVE_LEFT_RIGHT_PERIOD)  //2000 == 4 cycle
 	            {
+	            	controller_reset(&n_r);
+					controller_reset(&n_l_back);
 					car_state = CAR_STATE_IDLE;
 		    		last_state = CAR_STATE_MOVE_LEFT;
 	            }
@@ -1203,6 +1209,8 @@ void EXTI1_IRQHandler(){
 	        else if(car_state==CAR_STATE_MOVE_RIGHT){
 	            if(distance_right_counter >= MOVE_LEFT_RIGHT_PERIOD &&  distance_left_counter >= MOVE_LEFT_RIGHT_PERIOD)
 	            {
+	            	controller_reset(&n_r_back);
+					controller_reset(&n_l);
 					car_state = CAR_STATE_IDLE;
 	    			last_state = CAR_STATE_MOVE_RIGHT;
 			    }
