@@ -865,14 +865,6 @@ void pid_update(neural_state_t *n_s, float rin, int encoder_counter, int command
 
 void send_data_task(void *p){
 	while(1){
-		//if (alarm_message == 'A')
-		//{
-		//printf("r : %d", message_counter2);
-		//printf("%c", alarm_message);
-		//USART_puts(USART6, )
-		//	alarm_message = 'F';
-		//}
-		//USART_puts(USART6, received_string);
 		if (data_sending == 1)
 		{
 		    int tmp_counter = 0;
@@ -996,7 +988,7 @@ void neural_task(void *p)
 	        proc_cmd("forward", base_pwm_l - input_l, base_pwm_r - input_r);
 	    }
 	    else if (car_state == CAR_STATE_MOVE_LEFT){
-	    	rin = 5;
+	    	rin = 10;
 	    	getMotorData();
 
 	    	if (distance_right_counter > MOVE_LEFT_RIGHT_PERIOD)
@@ -1022,7 +1014,7 @@ void neural_task(void *p)
 	        proc_cmd("left", base_pwm_l-(int)input_l, base_pwm_r+(int)input_r);
 	    }
 	    else if (car_state == CAR_STATE_MOVE_RIGHT){
-	    	rin = 5;
+	    	rin = 10;
 	    	getMotorData();
 
 	    	if (distance_right_counter > MOVE_LEFT_RIGHT_PERIOD)
@@ -1171,24 +1163,6 @@ void EXTI0_IRQHandler(){
 		{
 				speed_left_counter++ ;
 				distance_left_counter ++;
-				if(car_state==CAR_STATE_MOVE_LEFT){
-		            if (distance_right_counter >= MOVE_LEFT_RIGHT_PERIOD && distance_left_counter >= MOVE_LEFT_RIGHT_PERIOD)  //2000 == 4 cycle
-		            {
-		            	controller_reset(&n_r);
-						controller_reset(&n_l_back);
-						car_state = CAR_STATE_IDLE;
-			    		last_state = CAR_STATE_MOVE_LEFT;
-		            }
-				}   
-		        else if(car_state==CAR_STATE_MOVE_RIGHT){
-		            if(distance_right_counter >= MOVE_LEFT_RIGHT_PERIOD &&  distance_left_counter >= MOVE_LEFT_RIGHT_PERIOD)
-		            {
-		            	controller_reset(&n_r_back);
-						controller_reset(&n_l);
-						car_state = CAR_STATE_IDLE;
-		    			last_state = CAR_STATE_MOVE_RIGHT;
-				    }
-				}
 				EXTI_ClearITPendingBit(EXTI_Line0);
 		}
 }
@@ -1198,24 +1172,6 @@ void EXTI1_IRQHandler(){
 		{
 			speed_right_counter++ ;
 			distance_right_counter ++;
-			if(car_state==CAR_STATE_MOVE_LEFT){
-	            if (distance_right_counter >= MOVE_LEFT_RIGHT_PERIOD && distance_left_counter >= MOVE_LEFT_RIGHT_PERIOD)  //2000 == 4 cycle
-	            {
-	            	controller_reset(&n_r);
-					controller_reset(&n_l_back);
-					car_state = CAR_STATE_IDLE;
-		    		last_state = CAR_STATE_MOVE_LEFT;
-	            }
-			}   
-	        else if(car_state==CAR_STATE_MOVE_RIGHT){
-	            if(distance_right_counter >= MOVE_LEFT_RIGHT_PERIOD &&  distance_left_counter >= MOVE_LEFT_RIGHT_PERIOD)
-	            {
-	            	controller_reset(&n_r_back);
-					controller_reset(&n_l);
-					car_state = CAR_STATE_IDLE;
-	    			last_state = CAR_STATE_MOVE_RIGHT;
-			    }
-			}
 			EXTI_ClearITPendingBit(EXTI_Line1);
 		}
 }
