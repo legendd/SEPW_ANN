@@ -48,101 +48,13 @@
 				int avg;
 		}DISTANCE_INFO_STRU;
 DISTANCE_INFO_STRU distance_info_CH1;
+
 void tesing_task(void* p) { 
-        int i = 0;
+  int i = 0;
 		
-        struct limit_switch_info actuator_LS_state;
-		/* initial two linear actuator*/
-		//set_linearActuator_A_cmd(CW, 255);
-		//vTaskDelay(10000);
-#if 0
-        set_linearActuator_A_cmd(CCW , 255);
-        vTaskDelay(1000);
-    
-		while(1){
-				
-				/** 
-				 *  testing linear actuator
-				 *  3000 means 3.00 voltage.
-                 *  determine the upper and lower state.
-                 **/
-                actuator_LS_state.actuatorA_LS_state|= get_LimitSwitch_Vt(1,0)<=3000?   0x01 : 0x00; /*lower limited*/
-                actuator_LS_state.actuatorA_LS_state|= get_LimitSwitch_Vt(1,1)<=3000?   0x02 : 0x00; /*upper limited*/
+  struct limit_switch_info actuator_LS_state;
 
-                switch(actuator_LS_state.actuatorA_LS_state){
-                     case 0x00://normal range.
-                         break;
-                     case 0x01://lower limited
-                         set_linearActuator_A_cmd(CW , 255);
-                         break;
-                     case 0x02://upper limited
-                         set_linearActuator_A_cmd(CCW , 255);
-                         break;
-                     case 0x03://both limited, but isn't impossible in actually.
-                         break;
-               }
-
-				vTaskDelay(500);
-				//printf("%d\n" ,get_LimitSwitch_A_upper_Vt());
-		}
-#endif
-
-#if 0
-		for (;;) {
-				/*check out the system is not crash */
-				//GPIO_ToggleBits(GPIOD,GPIO_Pin_12);
-        
-                /*
-                forward_cmd(100 , 100);
-				vTaskDelay(1000);
-                
-                stop_cmd(100 , 100);
-				vTaskDelay(1000);
-               
-                backward_cmd(100 , 100);
-                    vTaskDelay(1000);
-
-                left_cmd(100 , 100);
-                vTaskDelay(1000);
-
-                right_cmd(100 , 100);
-                vTaskDelay(1000);
-                */
-                
-				if (distance_info_CH1.counter< 3   )  {
-						distance_info_CH1.avg += Get_CH1Distance();
-						distance_info_CH1.counter++;
-				}
-				else{
-						distance_info_CH1.avg  =  round( (float)distance_info_CH1.avg / 3.0f);
-						//printf("%ld %ld %ld %ld\n\r",distance_avg_1,Get_CH1Distance() ,Get_CH2Distance(),Get_CH3Distance() );
-						printf("%ld\n\r",distance_info_CH1.avg);
-
-						distance_info_CH1.counter=0;
-						distance_info_CH1.avg = 0;
-				}
-				vTaskDelay(500);
-		}
-#endif
-
-#if 0
-        if (SysTick_Config(SystemCoreClock / 1000))
-        { 
-            /* Capture error */ 
-            while (1);
-        }
-#endif
-
-#if 0
-        /*check the delay function is correct.*/
-        int cnt=0;
-        while(1){
-            //GPIO_ToggleBits(GPIOD,GPIO_Pin_14);                                                                                                                                                                                    
-            delay_us(10000);
-            printf("%d %d %d %d\r\n",Get_CH1Distance(),Get_CH2Distance(),Get_CH3Distance(),Get_CH4Distance());
-        }
-#endif    
-		vTaskDelete(NULL);
+	vTaskDelete(NULL);
 }
 
 
@@ -208,11 +120,14 @@ void vApplicationStackOverflowHook(xTaskHandle pxTask, signed char *pcTaskName) 
 int main(void) {
 
 		uint8_t ret = pdFALSE;
-        /*init.*/
+    /*init.*/
 		NVIC_PriorityGroupConfig(NVIC_PriorityGroup_4);
 		init_USART3(9600);
+//    init_USART6(9600);
+    //USART1_Config();    // USART 6 for receiving Lidar message
+
 		init_LED();
-		ultra_sound_init();
+		//ultra_sound_init();
 		init_car();
         //init_linear_actuator();
 
