@@ -158,5 +158,5 @@ clean:
 
 
 
-onykey:
+onekey:
 	make clean ; make ; make flash
